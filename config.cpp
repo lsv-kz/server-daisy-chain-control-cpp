@@ -13,9 +13,10 @@ int check_path(string & path)
     if (ret == -1)
     {
         fprintf(stderr, "<%s:%d> Error stat(%s): %s\n", __func__, __LINE__, path.c_str(), strerror(errno));
-		char *cwd = get_current_dir_name();
-		fprintf(stderr, "<%s:%d> cwd: %s\n", __func__, __LINE__, cwd);
-		free(cwd);
+		char buf[2048];
+		char *cwd = getcwd(buf, sizeof(buf));
+		if (cwd)
+			fprintf(stderr, "<%s:%d> cwd: %s\n", __func__, __LINE__, cwd);
         return -1;
     }
 

@@ -7,12 +7,9 @@ int Connect::serverSocket;
 
 int create_server_socket(const Config *c);
 int read_conf_file(const char *path_conf);
-
 void free_fcgi_list();
-
 int set_uid();
 pid_t create_child(int sock, unsigned int num_chld, int *pfd_i, int);
-
 static int main_proc();
 
 static string pidFile;
@@ -344,16 +341,17 @@ int main_proc()
         fprintf(stderr, "<%s:%d> Error pipe(): %s\n", __func__, __LINE__, strerror(errno));
         return -1;
     }
-    
+
     pfd_in = pfd[0];
-    
+    //   Creating first process
     pid_child = create_child(sockServer, 0, &pfd_in, pfd[1]);
     if (pid_child < 0)
     {
         fprintf(stderr, "<%s:%d> Error create_child()\n", __func__, __LINE__);
         exit(1);
     }
-    
+
+    //   Creating ather processes
     pid_t pid_;
     unsigned int num_create_proc = 1;
     for ( ; num_create_proc < conf->NumProc; ++num_create_proc)

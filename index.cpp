@@ -179,10 +179,10 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
         if (isimage(list[i]) && (conf->ShowMediaFiles == 'y'))
         {
             if (size < 15000LL)
-                chunk_buf << "   <tr><td><a href=\"" << buf << "\"><img src=\"" << buf << "\">" << list[i] << "</a></td>"
+                chunk_buf << "   <tr><td><a href=\"" << buf << "\"><img src=\"" << buf << "\"></a><p>" << list[i] << "</p></td>"
                           << "<td align=\"right\">" << size << " bytes</td></tr>\r\n";
             else
-                chunk_buf << "   <tr><td><a href=\"" << buf << "\"><img src=\"" << buf << "\" width=\"300\">" << list[i] << "</a></td>"
+                chunk_buf << "   <tr><td><a href=\"" << buf << "\"><img src=\"" << buf << "\" width=\"300\"></a><p>" << list[i] << "</p></td>"
                           << "<td align=\"right\">" << size << " bytes</td></tr>\r\n";
         }
         else if (isaudiofile(list[i]) && (conf->ShowMediaFiles == 'y'))

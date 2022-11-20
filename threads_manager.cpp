@@ -399,7 +399,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
                 if (write_(fd_out, &child_status, sizeof(child_status)) < 0)
                     break;
 
-                wait_close_conn(); // wait (num_conn < (MaxConnections - OverMaxConnections))
+                wait_close_conn(); // wait (num_conn < (MaxConnections - HysteresisConnections))
 
                 // Do not allow connections next process
                 child_status = CONNECT_IGN;

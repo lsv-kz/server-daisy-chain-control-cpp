@@ -92,9 +92,10 @@ void print_limits()
 {
     struct rlimit lim;
     if (getrlimit(RLIMIT_NOFILE, &lim) == -1)
-        fprintf(stdout, "<%s:%d> Error getrlimit(RLIMIT_NOFILE): %s\n", __func__, __LINE__, strerror(errno));
+        cout << " Error getrlimit(RLIMIT_NOFILE): " << strerror(errno) << "\n";
     else
-        printf(" RLIMIT_NOFILE: cur=%ld, max=%ld\n", (long)lim.rlim_cur, (long)lim.rlim_max);
+        cout << " RLIMIT_NOFILE: cur=" << (long)lim.rlim_cur << ", max=" << (long)lim.rlim_max << "\n";
+    cout << " hardware_concurrency(): " << thread::hardware_concurrency() << "\n\n";
 }
 //======================================================================
 void print_config()
@@ -111,8 +112,8 @@ void print_config()
          << "\n\n   SndBufSize             : " << conf->SndBufSize
          << "\n   SendFile               : " << conf->SendFile
 
-         << "\n   MaxWorkConnections     : " << conf->MaxWorkConnections
-         << "\n   HysteresisConnections  : " << conf->HysteresisConnections
+         << "\n\n   MaxWorkConnections     : " << conf->MaxWorkConnections
+         << "\n   FirstProcMain          : " << conf->FirstProcMain
          << "\n   MaxEventConnections    : " << conf->MaxEventConnections
 
          << "\n\n   NumProc                : " << conf->NumProc
@@ -323,7 +324,7 @@ int main_proc()
          << "\" run port: " << conf->ServerPort.c_str() << "\n";
     cerr << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
     cout << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
-    cerr << "   MaxWorkConnections: " << conf->MaxWorkConnections << ", HysteresisConnections: " << conf->HysteresisConnections << "\n";
+    cerr << "   MaxWorkConnections: " << conf->MaxWorkConnections << ", FirstProcMain: " << conf->FirstProcMain << "\n";
     cerr << "   SndBufSize: " << conf->SndBufSize << ", MaxEventConnections: " << conf->MaxEventConnections << "\n";
     //------------------------------------------------------------------
     for ( ; environ[0]; )
@@ -383,22 +384,20 @@ int main_proc()
             print_err("<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
             break;
         }
-        else
+        /*else
         {
             print_err("<%s:%d> read(): %d, from proc: %u\n", __func__, __LINE__, (int)status, num_create_proc - 1);
-        }
+        }*/
 
         if (status == PROC_CLOSE)
             break;
-        else if ((status == CONNECT_ALLOW) && (num_create_proc < 8) && (conf->NumProc == 0))
+        else if (status == CONNECT_ALLOW)
         {
-            pid_ = create_child(sockServer, num_create_proc, &pfd_in, pfd[1]);
-            if (pid_ < 0)
+            if ((ret = write(pfd[1], &status, sizeof(status))) < 0)
             {
-                fprintf(stderr, "<%s:%d> Error create_child()\n", __func__, __LINE__);
-                exit(1);
+                print_err("<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
+                break;
             }
-            ++num_create_proc;
         }
     }
 

@@ -111,7 +111,7 @@ struct Config
     int SndBufSize;
 
     int MaxWorkConnections;
-    int HysteresisConnections;
+    char FirstProcMain;
     int MaxEventConnections;
     
     unsigned int NumProc;

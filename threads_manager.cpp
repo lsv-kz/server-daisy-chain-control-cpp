@@ -139,15 +139,6 @@ mtx_conn.lock();
 mtx_conn.unlock();
 }
 //======================================================================
-void wait_close_conn()
-{
-unique_lock<mutex> lk(mtx_conn);
-    while (num_conn >= (conf->MaxWorkConnections - conf->HysteresisConnections))
-    {
-        cond_close_conn.wait(lk);
-    }
-}
-//======================================================================
 int is_maxconn()
 {
 mtx_conn.lock();
@@ -368,7 +359,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
     fdrd[1].fd = sockServer;
     fdrd[1].events = POLLIN;
 
-    char status = CONNECT_IGN, child_status = CONNECT_IGN;
+    char status = CONNECT_IGN;
     int num_fd = 1;
 
     while (1)
@@ -376,37 +367,21 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
         struct sockaddr_storage clientAddr;
         socklen_t addrSize = sizeof(struct sockaddr_storage);
 
-        if (status == CONNECT_IGN)
+        if (status == CONNECT_ALLOW)
         {
-            num_fd = 1;// poll(): only pipe[in]
-
-            if (child_status == CONNECT_ALLOW)
-            {
-                print_err("[%d] <%s:%d> \"We are not here. It is not us.\"\n", numProc, __func__, __LINE__);
-                child_status = PROC_CLOSE;
-                write_(fd_out, &child_status, sizeof(child_status));
-                break;
-            }
-        }
-        else if (status == CONNECT_ALLOW)
-        {
-            num_fd = 2;// poll(): pipe[in] and listen socket
-
             if (is_maxconn())
             {//------ the number of connections is the maximum ---------
                 // Allow connections next worker process
-                child_status = CONNECT_ALLOW;
-                if (write_(fd_out, &child_status, sizeof(child_status)) < 0)
+                if (write_(fd_out, &status, sizeof(status)) < 0)
                     break;
-
-                wait_close_conn(); // wait (num_conn < (MaxConnections - HysteresisConnections))
-
-                // Do not allow connections next process
-                child_status = CONNECT_IGN;
-                if (write_(fd_out, &child_status, sizeof(child_status)) < 0)
-                    break;
+                status = CONNECT_IGN;
+                num_fd = 1;
             }
+            else
+                num_fd = 2;
         }
+        else
+            num_fd = 1;
 
         int ret_poll = poll(fdrd, num_fd, -1);
         if (ret_poll <= 0)
@@ -431,13 +406,14 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
             {
                 // Close next process
                 write_(fd_out, &status, sizeof(status));
+                print_err("[%d] <%s:%d> read(): PROC_CLOSE\n", numProc, __func__, __LINE__);
                 break;
             }
 
             continue;
         }
         
-        if (fdrd[1].revents == POLLIN && status)
+        if (fdrd[1].revents == POLLIN)
         {
             --ret_poll;
 
@@ -486,6 +462,14 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
             print_err("[%d] <%s:%d>  Error: pipe revents=0x%x; socket revents=0x%x\n", 
                         numProc, __func__, __LINE__, fdrd[0].revents, fdrd[1].revents);
             break;
+        }
+
+        if (conf->FirstProcMain == 'n')
+        {
+            status = CONNECT_IGN;
+            char ch = CONNECT_ALLOW;
+            if (write_(fd_out, &ch, sizeof(ch)) < 0)
+                break;
         }
     }
 

@@ -64,7 +64,7 @@ void create_conf_file(const char *path)
     fprintf(f, "SndBufSize  32768\n\n");
 
     fprintf(f, "MaxWorkConnections   768\n");
-    fprintf(f, "HysteresisConnections  5\n");
+    fprintf(f, "FirstProcMain  n \n");
     fprintf(f, "MaxEventConnections  100\n\n");
 
     fprintf(f, "NumProc 1\n");
@@ -296,8 +296,8 @@ int read_conf_file(FILE *fconf)
                 s2 >> c.SndBufSize;
             else if ((s1 == "MaxWorkConnections") && is_number(s2.c_str()))
                 s2 >> c.MaxWorkConnections;
-            else if ((s1 == "HysteresisConnections") && is_number(s2.c_str()))
-                s2 >> c.HysteresisConnections;
+            else if ((s1 == "FirstProcMain") && is_bool(s2.c_str()))
+                c.FirstProcMain = (char)tolower(s2[0]);
             else if ((s1 == "MaxEventConnections") && is_number(s2.c_str()))
                 s2 >> c.MaxEventConnections;
             else if ((s1 == "TimeoutPoll") && is_number(s2.c_str()))
@@ -461,6 +461,11 @@ int read_conf_file(FILE *fconf)
         return -1;
     }
     //------------------------------------------------------------------
+    /*if (thread::hardware_concurrency() == 1)
+        c.FirstProcMain = 'y';
+    else
+        c.FirstProcMain = 'n';
+    */
     //------------------- Setting OPEN_MAX -----------------------------
     if (c.MaxWorkConnections <= 0)
     {
@@ -480,11 +485,6 @@ int read_conf_file(FILE *fconf)
         c.MaxWorkConnections = n;
     }
 
-    if (c.HysteresisConnections >= c.MaxWorkConnections)
-    {
-        fprintf(stderr, "<%s:%d> Error: HysteresisConnections >= MaxWorkConnections\n", __func__, __LINE__);
-        return -1;
-    }
     //c.HysteresisConnections = (c.MaxWorkConnections/100) * conf->HysteresisConnections;
     //fprintf(stderr, "<%s:%d> max_fd=%d\n", __func__, __LINE__, n);
     return 0;

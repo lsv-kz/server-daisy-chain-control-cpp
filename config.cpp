@@ -13,10 +13,10 @@ int check_path(string & path)
     if (ret == -1)
     {
         fprintf(stderr, "<%s:%d> Error stat(%s): %s\n", __func__, __LINE__, path.c_str(), strerror(errno));
-		char buf[2048];
-		char *cwd = getcwd(buf, sizeof(buf));
-		if (cwd)
-			fprintf(stderr, "<%s:%d> cwd: %s\n", __func__, __LINE__, cwd);
+        char buf[2048];
+        char *cwd = getcwd(buf, sizeof(buf));
+        if (cwd)
+            fprintf(stderr, "<%s:%d> cwd: %s\n", __func__, __LINE__, cwd);
         return -1;
     }
 
@@ -485,7 +485,6 @@ int read_conf_file(FILE *fconf)
         c.MaxWorkConnections = n;
     }
 
-    //c.HysteresisConnections = (c.MaxWorkConnections/100) * conf->HysteresisConnections;
     //fprintf(stderr, "<%s:%d> max_fd=%d\n", __func__, __LINE__, n);
     return 0;
 }

@@ -549,7 +549,7 @@ int parse_startline_request(Connect *req, char *s)
         return -RS400;
     //------------------------------- uri ------------------------------
     if (*p == ' ')
-		return -RS400;
+        return -RS400;
     req->uriLen = 0;
     p_val = p;
     while (*p)

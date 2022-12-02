@@ -58,54 +58,7 @@ int read_timeout(int fd, char *buf, int len, int timeout)
     return read_bytes;
 }
 //======================================================================
-int write_to_client(Connect *req, const char *buf, int len, int timeout)
-{
-    int write_bytes = 0, ret;
-    struct pollfd fdwr;
-    
-    fdwr.fd = req->clientSocket;
-    fdwr.events = POLLOUT;
-
-    while (len > 0)
-    {
-        ret = poll(&fdwr, 1, timeout * 1000);
-        if (ret == -1)
-        {
-            print_err(req, "<%s:%d> Error poll(): %s\n", __func__, __LINE__, strerror(errno));
-            if (errno == EINTR)
-                continue;
-            return -1;
-        }
-        else if (!ret)
-        {
-            print_err(req, "<%s:%d> TimeOut poll(), tm=%d\n", __func__, __LINE__, timeout);
-            return -1;
-        }
-        
-        if (fdwr.revents != POLLOUT)
-        {
-            print_err(req, "<%s:%d> 0x%02x\n", __func__, __LINE__, fdwr.revents);
-            return -1;
-        }
-        
-        ret = write(req->clientSocket, buf, len);
-        if (ret == -1)
-        {
-            print_err(req, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
-            if ((errno == EINTR) || (errno == EAGAIN))
-                continue;
-            return -1;
-        }
-
-        write_bytes += ret;
-        len -= ret;
-        buf += ret;
-    }
-
-    return write_bytes;
-}
-//======================================================================
-int write_to_script(int fd, const char *buf, int len, int timeout)
+int write_timeout(int fd, const char *buf, int len, int timeout)
 {
     int write_bytes = 0, ret;
     struct pollfd fdwr;
@@ -152,7 +105,7 @@ int write_to_script(int fd, const char *buf, int len, int timeout)
     return write_bytes;
 }
 //======================================================================
-int client_to_script(Connect *req, int fd_out, long long *cont_len)
+int client_to_cgi(int fd_in, int fd_out, long long *cont_len)
 {
     int wr_bytes = 0;
     int rd, wr, ret;
@@ -162,16 +115,14 @@ int client_to_script(Connect *req, int fd_out, long long *cont_len)
     {
         rd = (*cont_len > (int)sizeof(buf)) ? (int)sizeof(buf) : *cont_len;
         
-        ret = read_timeout(req->clientSocket, buf, rd, conf->Timeout);
+        ret = read_timeout(fd_in, buf, rd, conf->Timeout);
         if (ret == -1)
-        {
             return -1;
-        }
         else if (ret == 0)
             break;
 
         *cont_len -= ret;
-        wr = write_to_script(fd_out, buf, ret, conf->TimeoutCGI);
+        wr = write_timeout(fd_out, buf, ret, conf->TimeoutCGI);
         if (wr <= 0)
             return wr;
         wr_bytes += wr;
@@ -249,65 +200,6 @@ long fcgi_to_cosmos(int fd_in, unsigned int size, int timeout)
     return wr_bytes;
 }
 //======================================================================
-int script_to_file(int fd_in, int fd_out, int cont_len, int timeout)
-{
-    int all_wr_bytes = 0;
-    int rd, wr;
-    char buf[512];
-
-    for ( ; cont_len > 0; )
-    {
-        rd = read_timeout(fd_in, buf, cont_len > (int)sizeof(buf) ? (int)sizeof(buf) : cont_len, timeout);
-        if (rd == -1)
-        {
-            if (errno == EINTR)
-                continue;
-            print_err("<%s:%d> Error read_timeout()\n", __func__, __LINE__);
-            return -1;
-        }
-        else if (rd == 0)
-            break;
-
-        cont_len -= rd;
-
-        wr = write(fd_out, buf, rd);
-        if (wr != rd)
-            return -1;
-
-        all_wr_bytes += rd;
-    }
-
-    return all_wr_bytes;
-}
-//======================================================================
-int fcgi_read_stderr(int fd_in, int cont_len, int timeout)
-{
-    int wr_bytes = 0;
-    int rd;
-    char buf[512];
-
-    for ( ; cont_len > 0; )
-    {
-        rd = read_timeout(fd_in, buf, cont_len > (int)sizeof(buf) ? (int)sizeof(buf) : cont_len, conf->Timeout);
-        if (rd == -1)
-        {
-            print_err("<%s:%d> Error read_timeout()=%d\n", __func__, __LINE__, rd);
-            if (errno == EINTR)
-                continue;
-            return -1;
-        }
-        else if (rd == 0)
-            break;
-
-        cont_len -= rd;
-
-        write(STDERR_FILENO, buf, rd);
-        wr_bytes += rd;
-    }
-write(STDERR_FILENO, "\n", 1);
-    return wr_bytes;
-}
-//======================================================================
 int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *cont_len)
 {
     int rd, wr;
@@ -331,7 +223,7 @@ int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *c
         else if (rd == 0)
             break;
 
-        wr = write_to_client(req, buf, rd, conf->Timeout);
+        wr = write_timeout(req->clientSocket, buf, rd, conf->Timeout);
         if (wr != rd)
         {
             print_err(req, "<%s:%d> Error write_to_sock()=%d, %d\n", __func__, __LINE__, wr, rd);

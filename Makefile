@@ -7,6 +7,7 @@ OBJSDIR = objs
 $(shell mkdir -p $(OBJSDIR))
 
 OBJS = $(OBJSDIR)/server.o \
+	$(OBJSDIR)/scgi.o \
 	$(OBJSDIR)/classes.o \
 	$(OBJSDIR)/send_headers.o \
 	$(OBJSDIR)/config.o \
@@ -27,6 +28,9 @@ server: $(OBJS)
 
 $(OBJSDIR)/server.o: server.cpp main.h string__.h
 	$(CC) $(CFLAGS) -c server.cpp -o $@
+
+$(OBJSDIR)/scgi.o: scgi.cpp main.h string__.h scgi.h
+	$(CC) $(CFLAGS) -c scgi.cpp -o $@
 
 $(OBJSDIR)/classes.o: classes.cpp main.h classes.h string__.h
 	$(CC) $(CFLAGS) -c classes.cpp -o $@

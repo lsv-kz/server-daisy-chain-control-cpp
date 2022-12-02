@@ -28,7 +28,7 @@ void create_logfiles(const string& log_dir)
     fileName.clear();
     fileName << log_dir << "/error_" << buf << '_' << conf->ServerSoftware << ".log";
 
-    flog_err = open(fileName.c_str(), O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);// O_APPEND 
+    flog_err = open(fileName.c_str(), O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if(flog_err == -1)
     {
         cerr << "  Error create log_err: " << fileName.c_str() << "\n";

@@ -66,7 +66,7 @@ int send_response_headers(Connect *req, const String *hdrs)
         return -1;
     }
 
-    int n = write_to_client(req, resp.c_str(), resp.size(), conf->Timeout);
+    int n = write_timeout(req->clientSocket, resp.c_str(), resp.size(), conf->Timeout);
     if (n <= 0)
     {
         print_err(req, "<%s:%d> Sent to client response error; (%d)\n", __func__, __LINE__, n);
@@ -74,7 +74,7 @@ int send_response_headers(Connect *req, const String *hdrs)
         req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
         return -1;
     }
-//fprintf(stderr, "<%s:%d>---------------------------------\n%s", __func__, __LINE__, resp.c_str());
+
     return 0;
 }
 //======================================================================
@@ -120,7 +120,7 @@ void send_message(Connect *req, const char *msg, const String *hdrs)
 
     if (req->respContentLength > 0)
     {
-        req->send_bytes = write_to_client(req, html.c_str(), req->respContentLength, conf->Timeout);
+        req->send_bytes = write_timeout(req->clientSocket, html.c_str(), req->respContentLength, conf->Timeout);
         if (req->send_bytes <= 0)
         {
             print_err(req, "<%s:%d> Error write_timeout()\n", __func__, __LINE__);

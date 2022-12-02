@@ -67,24 +67,15 @@ int wait_pid(Connect *req, int pid)
     return req->err;
 }
 //======================================================================
-int kill_script(Connect *req, int pid, int stat, const char *msg)
+void kill_script(int pid)
 {
-    req->connKeepAlive = 0;
-    if (stat > 0)
-    {
-        req->respStatus = stat;
-        send_message(req, msg, NULL);
-    }
-
     if (kill(pid, SIGKILL) == 0)
         waitpid(pid, NULL, 0);
     else
         print_err("<%s:%d> Error kill(%d): %s\n", __func__, __LINE__, pid, strerror(errno));
-
-    return -1;
 }
 //======================================================================
-int cgi_chunk(Connect *req, String *hdrs, int cgi_serv_in, pid_t pid, char *tail_ptr, int tail_len)
+int cgi_chunk(Connect *req, String *hdrs, int cgi_serv_in, char *tail_ptr, int tail_len)
 {
     int chunk;
     if (req->reqMethod == M_HEAD)
@@ -102,23 +93,21 @@ int cgi_chunk(Connect *req, String *hdrs, int cgi_serv_in, pid_t pid, char *tail
             print_err("<%s:%d> Error send_header_response()\n", __func__, __LINE__);
             return -1;
         }
+
         req->respContentLength = tail_len + n;
         if (send_response_headers(req, hdrs))
         {
             print_err("<%s:%d> Error send_header_response()\n", __func__, __LINE__);
         }
+
         return 0;
     }
 
     if (chunk == SEND_CHUNK)
-    {
         (*hdrs) << "Transfer-Encoding: chunked\r\n";
-    }
 
     if (send_response_headers(req, hdrs))
-    {
         return -1;
-    }
     //-------------------------- send entity ---------------------------
     if (tail_len > 0)
     {
@@ -148,7 +137,7 @@ int cgi_chunk(Connect *req, String *hdrs, int cgi_serv_in, pid_t pid, char *tail
     return 0;
 }
 //======================================================================
-int cgi_read_headers(Connect *req, int cgi_serv_in, pid_t pid)
+int cgi_read_headers(Connect *req, int cgi_serv_in)
 {
     req->respStatus = RS200;
 
@@ -156,7 +145,7 @@ int cgi_read_headers(Connect *req, int cgi_serv_in, pid_t pid)
     if (hdrs.error())
     {
         print_err(req, "<%s:%d> Error create String object\n", __func__, __LINE__);
-        return kill_script(req, pid, RS500, "Error create String object");
+        return -RS500;
     }
 
     const char *err_str = "Error: Blank line not found";
@@ -171,7 +160,7 @@ int cgi_read_headers(Connect *req, int cgi_serv_in, pid_t pid)
         char *end_ptr, *str;
 
         end_ptr = (char*)memchr(start_ptr, '\n', ReadFromScript);
-        if(end_ptr == NULL)
+        if (end_ptr == NULL)
         {
             if (ReadFromScript > 0)
             {
@@ -257,14 +246,10 @@ int cgi_read_headers(Connect *req, int cgi_serv_in, pid_t pid)
     if (err_str)
     {
         print_err(req, "<%s:%d> %s\n ReadFromScript=%d\n", __func__, __LINE__, err_str, ReadFromScript);
-        return kill_script(req, pid, RS500, err_str);
+        return -RS500;
     }
 
-    int ret = cgi_chunk(req, &hdrs, cgi_serv_in, pid, start_ptr, ReadFromScript);
-    if (ret < 0)
-        return kill_script(req, pid, 0, "");
-    else
-        return wait_pid(req, pid);
+    return cgi_chunk(req, &hdrs, cgi_serv_in, start_ptr, ReadFromScript);
 }
 //======================================================================
 int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
@@ -278,7 +263,6 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
         close(serv_cgi[0]);
         close(serv_cgi[1]);
         close(cgi_serv[1]);
-        req->connKeepAlive = 0;
         return -RS500;
     }
     else if (pid == 0)
@@ -382,40 +366,31 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
         {
             if (req->tail)
             {
-                wr_bytes = write_to_script(serv_cgi[1], req->tail, req->lenTail, conf->TimeoutCGI);
+                wr_bytes = write_timeout(serv_cgi[1], req->tail, req->lenTail, conf->TimeoutCGI);
                 if (wr_bytes < 0)
                 {
                     print_err(req, "<%s:%d> Error tail to script: %d\n", __func__, __LINE__, wr_bytes);
                     close(serv_cgi[1]);
-                    return kill_script(req, pid, RS500, "2");
+                    return -RS500;
                 }
                 req->req_hd.reqContentLength -= wr_bytes;
             }
 
-            wr_bytes = client_to_script(req, serv_cgi[1], &req->req_hd.reqContentLength);
+            wr_bytes = client_to_cgi(req->clientSocket, serv_cgi[1], &req->req_hd.reqContentLength);
             if ((wr_bytes <= 0) && (req->req_hd.reqContentLength))
             {
-                int stat = 0;
-                if (wr_bytes < 0)
-                {
-                    if (req->req_hd.reqContentLength > 0 && req->req_hd.reqContentLength < conf->ClientMaxBodySize)
-                    {
-                        client_to_cosmos(req, &req->req_hd.reqContentLength);
-                        if (req->req_hd.reqContentLength == 0)
-                            stat = RS500;
-                    }
-                }
-
                 print_err(req, "<%s:%d> Error client_to_script() = %d\n", __func__, __LINE__, wr_bytes);
                 close(serv_cgi[1]);
-                return kill_script(req, pid, stat, "2");
+                return -1;
             }
         }
 
         close(serv_cgi[1]);
-        
-        n = cgi_read_headers(req, cgi_serv[0], pid);
-
+        n = cgi_read_headers(req, cgi_serv[0]);
+        if (n < 0)
+            kill_script(pid);
+        else
+            wait_pid(req, pid);
         return n;
     }
 }
@@ -505,8 +480,7 @@ int cgi(Connect *req)
     ret = cgi_fork(req, serv_cgi, cgi_serv, path);
     close(cgi_serv[0]);
     cgi_dec();
-    if (ret < 0)
-        req->connKeepAlive = 0;
+
     return ret;
 
 errExit1:

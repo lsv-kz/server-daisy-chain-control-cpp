@@ -9,7 +9,7 @@ int create_server_socket(const Config *c);
 int read_conf_file(const char *path_conf);
 void free_fcgi_list();
 int set_uid();
-pid_t create_child(int sock, unsigned int num_chld, int *pfd_i, int);
+pid_t create_child(int, unsigned int, int *, int, char);
 static int main_proc();
 
 static string pidFile;
@@ -112,8 +112,8 @@ void print_config()
          << "\n\n   SndBufSize             : " << conf->SndBufSize
          << "\n   SendFile               : " << conf->SendFile
 
-         << "\n\n   MaxWorkConnections     : " << conf->MaxWorkConnections
-         << "\n   FirstProcMain          : " << conf->FirstProcMain
+         << "\n\n   NumCpuCores            : " << conf->NumCpuCores
+         << "\n   MaxWorkConnections     : " << conf->MaxWorkConnections
          << "\n   MaxEventConnections    : " << conf->MaxEventConnections
 
          << "\n\n   NumProc                : " << conf->NumProc
@@ -324,7 +324,7 @@ int main_proc()
          << "\" run port: " << conf->ServerPort.c_str() << "\n";
     cerr << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
     cout << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
-    cerr << "   MaxWorkConnections: " << conf->MaxWorkConnections << ", FirstProcMain: " << conf->FirstProcMain << "\n";
+    cerr << "   MaxWorkConnections: " << conf->MaxWorkConnections << ", NumCpuCores: " << conf->NumCpuCores << "\n";
     cerr << "   SndBufSize: " << conf->SndBufSize << ", MaxEventConnections: " << conf->MaxEventConnections << "\n";
     //------------------------------------------------------------------
     for ( ; environ[0]; )
@@ -345,7 +345,7 @@ int main_proc()
 
     pfd_in = pfd[0];
     //   Creating first process
-    pid_child = create_child(sockServer, 0, &pfd_in, pfd[1]);
+    pid_child = create_child(sockServer, 0, &pfd_in, pfd[1], CONNECT_ALLOW);
     if (pid_child < 0)
     {
         fprintf(stderr, "<%s:%d> Error create_child()\n", __func__, __LINE__);
@@ -357,7 +357,7 @@ int main_proc()
     unsigned int num_create_proc = 1;
     for ( ; num_create_proc < conf->NumProc; ++num_create_proc)
     {
-        pid_ = create_child(sockServer, num_create_proc, &pfd_in, pfd[1]);
+        pid_ = create_child(sockServer, num_create_proc, &pfd_in, pfd[1], CONNECT_IGN);
         if (pid_ < 0)
         {
             fprintf(stderr, "<%s:%d> Error create_child()\n", __func__, __LINE__);
@@ -366,7 +366,7 @@ int main_proc()
     }
     //------------------------------------------------------------------
     //---------- Allow connections first worker process ----------------
-    char status = CONNECT_ALLOW;
+    unsigned char status = CONNECT_ALLOW;
     int ret;
     if ((ret = write(pfd[1], &status, sizeof(status))) < 0)
     {
@@ -379,26 +379,50 @@ int main_proc()
     //------------------------------------------------------------------
     while (1)
     {
-        if ((ret = read(pfd_in, &status, sizeof(status))) < 0)
+        if ((ret = read(pfd_in, &status, sizeof(status))) <= 0)
         {
             print_err("<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
             break;
         }
-        /*else
-        {
-            print_err("<%s:%d> read(): %d, from proc: %u\n", __func__, __LINE__, (int)status, num_create_proc - 1);
-        }*/
+        //else
+            //print_err("<%s:%d> status: 0x%x, from proc: %u\n", __func__, __LINE__, (int)status, num_create_proc - 1);
 
         if (status == PROC_CLOSE)
             break;
+        else if (status == (CONNECT_ALLOW | 0x80))
+        {
+            if (num_create_proc < conf->MaxNumProc)
+            {
+                pid_ = create_child(sockServer, num_create_proc, &pfd_in, pfd[1], CONNECT_ALLOW);
+                if (pid_ < 0)
+                {
+                    fprintf(stderr, "<%s:%d> Error create_child()\n", __func__, __LINE__);
+                    exit(1);
+                }
+
+                ++num_create_proc;
+            }
+            else
+            {
+                status = CONNECT_ALLOW;
+                if (write(pfd[1], &status, sizeof(status)) < 0)
+                {
+                    print_err("<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
+                    break;
+                }
+            }
+        }
         else if (status == CONNECT_ALLOW)
         {
-            if ((ret = write(pfd[1], &status, sizeof(status))) < 0)
+            status = 0x80 | CONNECT_ALLOW;
+            if (write(pfd[1], &status, sizeof(status)) < 0)
             {
-                print_err("<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
+                print_err("<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
                 break;
             }
         }
+        else
+            print_err("<%s:%d> !!! status: 0x%x, from proc: %u\n", __func__, __LINE__, (int)status, num_create_proc - 1);
     }
 
     close(sockServer);
@@ -420,9 +444,9 @@ int main_proc()
     return 0;
 }
 //======================================================================
-void manager(int sock, unsigned int num, int fd_in, int fd_out);
+void manager(int, unsigned int, int, int, char);
 //======================================================================
-pid_t create_child(int sock, unsigned int num_chld, int *pfd_i, int fd_close)
+pid_t create_child(int sock, unsigned int num_chld, int *pfd_i, int fd_close, char sig)
 {
     pid_t pid;
     int pfd[2];
@@ -457,7 +481,7 @@ pid_t create_child(int sock, unsigned int num_chld, int *pfd_i, int fd_close)
         close(pfd[0]);
         close(fd_close);
 
-        manager(sock, num_chld, *pfd_i, pfd[1]);
+        manager(sock, num_chld, *pfd_i, pfd[1], sig);
 
         close(*pfd_i);
         close_logs();

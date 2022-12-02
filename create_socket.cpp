@@ -16,7 +16,7 @@ int create_server_socket(const Config *conf)
     {
         fprintf(stderr, "Error getaddrinfo(%s:%s): %s\n", conf->ServerAddr.c_str(), conf->ServerPort.c_str(), gai_strerror(n));
         return -1;
-    }  
+    }
 
     for (rp = result; rp != NULL; rp = rp->ai_next)
     {
@@ -100,7 +100,7 @@ int create_fcgi_socket(const char *host)
         if (inet_aton(addr, &(sock_addr.sin_addr)) == 0)
 //      if (inet_pton(AF_INET, addr, &(sock_addr.sin_addr)) < 1)
         {
-            print_err("   Error inet_pton(%s): %s\n", addr, strerror(errno));
+            print_err("<%s:%d> Error inet_pton(%s): %s\n", __func__, __LINE__, addr, strerror(errno));
             close(sockfd);
             return -errno;
         }
@@ -138,74 +138,5 @@ int create_fcgi_socket(const char *host)
             print_err("<%s:%d> Error fcntl(, F_SETFL, ): %s\n", __func__, __LINE__, strerror(errno));
     }
 
-    return sockfd;
-}
-//======================================================================
-int create_server_socket_(const Config *conf)
-{
-    int sockfd;
-    const int sock_opt = 1;
-    struct sockaddr_in server_sockaddr;
-    
-    sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if(sockfd == -1)
-    {
-        fprintf(stderr, "   Error socket(): %s\n", strerror(errno));
-        return -1;
-    }
-    
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (void *)&sock_opt, sizeof(sock_opt)))
-    {
-        perror("setsockopt (SO_REUSEADDR)");
-        close(sockfd);
-        return -1;
-    }
-
-    if (conf->tcp_nodelay == 'y')
-    {
-        if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&sock_opt, sizeof(sock_opt)))
-        {
-            print_err("<%s:%d> setsockopt: unable to set TCP_NODELAY: %s\n", __func__, __LINE__, strerror(errno));
-            close(sockfd);
-            return -1;
-        }
-    }
-    //------------------------------------------------------------------
-    /*socklen_t optlen = sizeof(sndbuf);
-    int sndbuf;
-    if (!getsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (void *)&sndbuf, &optlen))
-    {
-        printf("<%s:%d> SndBufSize=%d\n", __func__, __LINE__, conf->SndBufSize);
-        printf("<%s:%d> SO_SNDBUF=%d\n", __func__, __LINE__, sndbuf);
-    }*/
-    //------------------------------------------------------------------
-    memset(&server_sockaddr, 0, sizeof server_sockaddr);
-    server_sockaddr.sin_family = PF_INET;
-    server_sockaddr.sin_port = htons(atoi(conf->ServerPort.c_str()));
-
-/*  if (inet_pton(PF_INET, addr, &(server_sockaddr.sin_addr)) < 1)
-    {
-        print_err("   Error inet_pton(%s): %s\n", addr, strerror(errno));
-        close(sockfd);
-        return -1;
-    }*/
-    server_sockaddr.sin_addr.s_addr = inet_addr(conf->ServerAddr.c_str());
-    
-    if (bind(sockfd, (struct sockaddr *) &server_sockaddr, sizeof (server_sockaddr)) == -1)
-    {
-        int err = errno;
-        printf("<%s:%d> Error bind(): %s\n", __func__, __LINE__, strerror(err));
-        print_err("<%s:%d> Error bind(): %s\n", __func__, __LINE__, strerror(err));
-        close(sockfd);
-        return -1;
-    }
-    
-    if (listen(sockfd, conf->ListenBacklog) == -1)
-    {
-        perror("listen");
-        close(sockfd);
-        return -1;
-    }
-    
     return sockfd;
 }

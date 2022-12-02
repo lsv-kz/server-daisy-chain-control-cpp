@@ -53,7 +53,6 @@ void response1(RequestManager *ReqMan)
         //--------------------------------------------------------------
         if ((req->httpProt != HTTP10) && (req->httpProt != HTTP11))
         {
-            req->connKeepAlive = 0;
             req->err = -RS505;
             goto end;
         }
@@ -91,7 +90,6 @@ void response1(RequestManager *ReqMan)
         if (req->req_hd.iUpgrade >= 0)
         {
             print_err(req, "<%s:%d> req->upgrade: %s\n", __func__, __LINE__, req->reqHdValue[req->req_hd.iUpgrade]);
-            req->connKeepAlive = 0;
             req->err = -RS505;
             goto end;
         }
@@ -111,19 +109,11 @@ void response1(RequestManager *ReqMan)
             req->err = ret;
         }
         else if (req->reqMethod == M_OPTIONS)
-        {   
             req->err = options(req);
-        }
         else
             req->err = -RS501;
 
     end:
-        if (req->err <= -RS101)
-        {
-            if ((req->reqMethod == M_POST) || (req->reqMethod == M_PUT))
-                req->connKeepAlive = 0;
-        }
-
         end_response(req);
 
         ret = ReqMan->end_thr(0);
@@ -172,10 +162,24 @@ int fastcgi(Connect* req, const char* uri)
 
     if (!i)
         return -RS404;
-    req->scriptType = fast_cgi;
-    req->scriptName = i->script_name.c_str();
-    int ret = fcgi(req);
-    req->scriptName = NULL;
+
+    int ret;
+    if (i->type == fast_cgi)
+    {
+        req->scriptType = fast_cgi;
+        req->scriptName = i->script_name.c_str();
+        ret = fcgi(req);
+        req->scriptName = NULL;
+    }
+    else if (i->type == s_cgi)
+    {
+        req->scriptType = s_cgi;
+        req->scriptName = i->script_name.c_str();
+        ret = scgi(req);
+        req->scriptName = NULL;
+    }
+    else
+        ret = -1;
     return ret;
 }
 //======================================================================
@@ -483,7 +487,7 @@ int send_multypart(Connect *req, ArrayRanges& rg, char *rd_buf, int size)
             return -1;
         } 
 
-        n = write_to_client(req, buf, strlen(buf), conf->Timeout);
+        n = write_timeout(req->clientSocket, buf, strlen(buf), conf->Timeout);
         if (n < 0)
         {
             print_err(req, "<%s:%d> Error: write_timeout(), %lld bytes\n", __func__, __LINE__, send_all_bytes);
@@ -502,7 +506,7 @@ int send_multypart(Connect *req, ArrayRanges& rg, char *rd_buf, int size)
 
     req->send_bytes = send_all_bytes;
     snprintf(buf, sizeof(buf), "\r\n--%s--\r\n", boundary);
-    n = write_to_client(req, buf, strlen(buf), conf->Timeout);
+    n = write_timeout(req->clientSocket, buf, strlen(buf), conf->Timeout);
     if (n < 0)
     {
         print_err(req, "<%s:%d> Error: write_timeout() %lld bytes\n", __func__, __LINE__, send_all_bytes);

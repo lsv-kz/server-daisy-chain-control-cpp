@@ -2,7 +2,6 @@
 #include "fcgi.h"
 
 using namespace std;
-void hex_dump_stderr(const char *s, int line, const void *p, int n);
 //======================================================================
 int get_sock_fcgi(Connect *req, const char *script)
 {

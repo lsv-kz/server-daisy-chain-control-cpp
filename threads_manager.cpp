@@ -164,7 +164,7 @@ void end_response(Connect *req)
     { // ----- Close connect -----
         if (req->err > NO_PRINT_LOG)// 0 > err > NO_PRINT_LOG(-1000)
         {
-            if (req->err < -1)// -1 > err > NO_PRINT_LOG(-1000)
+            if (req->err <= -RS101)// -1 > err > NO_PRINT_LOG(-1000)
             {
                 req->respStatus = -req->err;
                 send_message(req, NULL, NULL);
@@ -256,10 +256,10 @@ static void signal_handler_child(int sig)
 }
 //======================================================================
 Connect *create_req();
-int write_(int fd, char *data, int size);
-int read_(int fd, char *data, int size);
+int write_(int fd, void *data, int size);
+int read_(int fd, void *data, int size);
 //======================================================================
-void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
+void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char sig)
 {
     RequestManager *ReqMan = new(nothrow) RequestManager(numProc);
     if (!ReqMan)
@@ -359,7 +359,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
     fdrd[1].fd = sockServer;
     fdrd[1].events = POLLIN;
 
-    char status = CONNECT_IGN;
+    unsigned char status = sig;
     int num_fd = 1;
 
     while (1)
@@ -367,7 +367,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
         struct sockaddr_storage clientAddr;
         socklen_t addrSize = sizeof(struct sockaddr_storage);
 
-        if (status == CONNECT_ALLOW)
+        if ((0x7f & status) == CONNECT_ALLOW)
         {
             if (is_maxconn())
             {//------ the number of connections is the maximum ---------
@@ -375,13 +375,16 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
                 if (write_(fd_out, &status, sizeof(status)) < 0)
                     break;
                 status = CONNECT_IGN;
-                num_fd = 1;
+                num_fd = 1;// poll(): pipe[in]
             }
             else
-                num_fd = 2;
+            {
+                num_fd = 2;// poll(): pipe[in] and listen socket
+                status = CONNECT_ALLOW;
+            }
         }
         else
-            num_fd = 1;
+            num_fd = 1;// poll(): pipe[in]
 
         int ret_poll = poll(fdrd, num_fd, -1);
         if (ret_poll <= 0)
@@ -395,21 +398,21 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
         if (fdrd[0].revents == POLLIN)
         {
             --ret_poll;
-
-            if (read_(fd_in, &status, sizeof(status)) <= 0)
+            unsigned char ch;
+            if (read_(fd_in, &ch, sizeof(ch)) <= 0)
             {
                 print_err("[%d] <%s:%d> Error read(): %s\n", numProc, __func__, __LINE__, strerror(errno));
                 break;
             }
 
-            if (status == PROC_CLOSE)
+            if (ch == PROC_CLOSE)
             {
                 // Close next process
-                write_(fd_out, &status, sizeof(status));
-                print_err("[%d] <%s:%d> read(): PROC_CLOSE\n", numProc, __func__, __LINE__);
+                write_(fd_out, &ch, sizeof(ch));
                 break;
             }
 
+            status = ch;
             continue;
         }
         
@@ -464,7 +467,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
             break;
         }
 
-        if (conf->FirstProcMain == 'n')
+        if (conf->NumCpuCores >= 4)
         {
             status = CONNECT_IGN;
             char ch = CONNECT_ALLOW;
@@ -475,12 +478,11 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out)
 
     wait_close_all_conn();
 
-    shutdown(sockServer, SHUT_RDWR);
     close(sockServer);
 
     n = ReqMan->get_num_thr();
-    print_err("[%d] <%s:%d>  numThr=%d; allNumThr=%u; all_req=%u; open_conn=%d\n", numProc, 
-                    __func__, __LINE__, n, ReqMan->get_all_thr(), all_req, num_conn);
+    print_err("[%d] <%s:%d>  numThr=%d; allNumThr=%u; all_req=%u; open_conn=%d, status=%u\n", numProc, 
+                    __func__, __LINE__, n, ReqMan->get_all_thr(), all_req, num_conn, (unsigned int)status);
     ReqMan->close_manager();
     close_event_handler();
 
@@ -501,7 +503,7 @@ Connect *create_req(void)
     return req;
 }
 //======================================================================
-int write_(int fd, char *data, int size)
+int write_(int fd, void *data, int size)
 {
     int ret, err;
 a1: 
@@ -516,7 +518,7 @@ a1:
     return ret;
 }
 //======================================================================
-int read_(int fd, char *data, int size)
+int read_(int fd, void *data, int size)
 {
     int ret, err;
 a1: 

@@ -135,7 +135,7 @@ int Connect::find_empty_line()
             lenTail -= i;
             p_newline = pLF + 1;
         }
-        else // not found end of line '\n' 
+        else // not found end of line '\n'
             break;
     }
 

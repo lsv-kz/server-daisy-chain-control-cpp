@@ -296,13 +296,13 @@ void event_handler(RequestManager *ReqMan)
 
     if (conf->MaxEventConnections <= 0)
     {
-        print_err("[%d]<%s:%d> Error config file: MaxEventConnections=%d\n", num_chld, __func__, __LINE__, conf->MaxEventConnections);
+        print_err("[%d]<%s:%d> Error: MaxEventConnections=%d\n", num_chld, __func__, __LINE__, conf->MaxEventConnections);
         exit(1);
     }
 
     if (conf->SndBufSize <= 0)
     {
-        print_err("[%d]<%s:%d> Error config file: SndBufSize=%d\n", num_chld, __func__, __LINE__, conf->SndBufSize);
+        print_err("[%d]<%s:%d> Error: SndBufSize=%d\n", num_chld, __func__, __LINE__, conf->SndBufSize);
         exit(1);
     }
 
@@ -376,7 +376,8 @@ void event_handler(RequestManager *ReqMan)
 #if defined(SEND_FILE_) && (defined(LINUX_) || defined(FREEBSD_))
     if (conf->SendFile != 'y')
 #endif
-        if (snd_buf) delete [] snd_buf;
+        if (snd_buf)
+            delete [] snd_buf;
     //print_err("*** Exit [%s:proc=%d] ***\n", __func__, num_chld);
 }
 //======================================================================

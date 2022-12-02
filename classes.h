@@ -84,7 +84,7 @@ enum mode_chunk {NO_SEND = 0, SEND_NO_CHUNK, SEND_CHUNK};
 //----------------------------------------------------------------------
 class ClChunked
 {
-    int i, mode, allSend, lenEntity;
+    int offset, mode, allSend, lenEntity;
     int err = 0;
     Connect *req;
     char buf[CHUNK_SIZE_BUF + MAX_LEN_SIZE_CHUNK + 10];
@@ -97,33 +97,44 @@ class ClChunked
         int len;
         if (mode == SEND_CHUNK)
         {
-            String ss(16);
-            ss << Hex << size << "\r\n" << Dec;
-            len = ss.size();
-            int n = MAX_LEN_SIZE_CHUNK - len;
-            if (n < 0)
+            int i = MAX_LEN_SIZE_CHUNK - 1;
+            const char *hex = "0123456789ABCDEF";
+            buf[i--] = '\n';
+            buf[i--] = '\r';
+
+            for ( ; i >= 0; --i)
+            {
+                buf[i] = hex[size % 16];
+                size /= 16;
+                if (size == 0)
+                    break;
+            }
+
+            if (size != 0)
+            {
+                err = 1;
                 return -1;
-            memcpy(buf + n, ss.c_str(), len);
-            memcpy(buf + MAX_LEN_SIZE_CHUNK + i, "\r\n", 2);
-            i += 2;
-            p = buf + n;
-            len += i;
+            }
+
+            memcpy(buf + MAX_LEN_SIZE_CHUNK + offset, "\r\n", 2);
+            p = buf + i;
+            len = MAX_LEN_SIZE_CHUNK - i + offset + 2;
         }
         else
         {
             p = buf + MAX_LEN_SIZE_CHUNK;
-            len = i;
+            len = offset;
         }
 
-        int ret = write_to_client(req, p, len, conf->Timeout);
+        int ret = write_timeout(req->clientSocket, p, len, conf->Timeout);
 
-        i = 0;
+        offset = 0;
         if (ret > 0)
             allSend += ret;
         return ret;
     }
 public://---------------------------------------------------------------
-    ClChunked(Connect *rq, int m){req = rq; mode = m; i = allSend = err = lenEntity = 0;}
+    ClChunked(Connect *rq, int m){req = rq; mode = m; offset = allSend = err = lenEntity = 0;}
     //------------------------------------------------------------------
     ClChunked & operator << (const long long ll)
     {
@@ -151,14 +162,14 @@ public://---------------------------------------------------------------
 
         lenEntity += len;
 
-        while (CHUNK_SIZE_BUF < (i + len))
+        while (CHUNK_SIZE_BUF < (offset + len))
         {
-            int l = CHUNK_SIZE_BUF - i;
-            memcpy(buf + MAX_LEN_SIZE_CHUNK + i, s + n, l);
-            i += l;
+            int l = CHUNK_SIZE_BUF - offset;
+            memcpy(buf + MAX_LEN_SIZE_CHUNK + offset, s + n, l);
+            offset += l;
             len -= l;
             n += l;
-            int ret = send_chunk(i);
+            int ret = send_chunk(offset);
             if (ret < 0)
             {
                 err = 1;
@@ -166,8 +177,8 @@ public://---------------------------------------------------------------
             }
         }
 
-        memcpy(buf + MAX_LEN_SIZE_CHUNK + i, s + n, len);
-        i += len;
+        memcpy(buf + MAX_LEN_SIZE_CHUNK + offset, s + n, len);
+        offset += len;
         return *this;
     }
     //------------------------------------------------------------------
@@ -198,14 +209,14 @@ public://---------------------------------------------------------------
         lenEntity += len;
 
         int n = 0;
-        while (CHUNK_SIZE_BUF < (i + len))
+        while (CHUNK_SIZE_BUF < (offset + len))
         {
-            int l = CHUNK_SIZE_BUF - i;
-            memcpy(buf + MAX_LEN_SIZE_CHUNK + i, s + n, l);
-            i += l;
+            int l = CHUNK_SIZE_BUF - offset;
+            memcpy(buf + MAX_LEN_SIZE_CHUNK + offset, s + n, l);
+            offset += l;
             len -= l;
             n += l;
-            int ret = send_chunk(i);
+            int ret = send_chunk(offset);
             if (ret < 0)
             {
                 err = 1;
@@ -213,8 +224,8 @@ public://---------------------------------------------------------------
             }
         }
 
-        memcpy(buf + MAX_LEN_SIZE_CHUNK + i, s + n, len);
-        i += len;
+        memcpy(buf + MAX_LEN_SIZE_CHUNK + offset, s + n, len);
+        offset += len;
         return 0;
     }
     //------------------------------------------------------------------
@@ -224,9 +235,9 @@ public://---------------------------------------------------------------
         int all_rd = 0;
         while (1)
         {
-            if (CHUNK_SIZE_BUF <= i)
+            if (CHUNK_SIZE_BUF <= offset)
             {
-                int ret = send_chunk(i);
+                int ret = send_chunk(offset);
                 if (ret < 0)
                 {
                     err = 1;
@@ -234,19 +245,19 @@ public://---------------------------------------------------------------
                 }
             }
 
-            int rd = CHUNK_SIZE_BUF - i;
-            int ret = read_timeout(fdPipe, buf + MAX_LEN_SIZE_CHUNK + i, rd, conf->TimeoutCGI);
+            int rd = CHUNK_SIZE_BUF - offset;
+            int ret = read_timeout(fdPipe, buf + MAX_LEN_SIZE_CHUNK + offset, rd, conf->TimeoutCGI);
             if (ret == 0)
             {
                 break;
             }
             else if (ret < 0)
             {
-                i = 0;
+                offset = 0;
                 return ret;
             }
 
-            i += ret;
+            offset += ret;
             all_rd += ret;
         }
 
@@ -265,29 +276,29 @@ public://---------------------------------------------------------------
 
         while (len > 0)
         {
-            if (CHUNK_SIZE_BUF <= i)
+            if (CHUNK_SIZE_BUF <= offset)
             {
-                int ret = send_chunk(i);
+                int ret = send_chunk(offset);
                 if (ret < 0)
                     return ret;
             }
 
-            int rd = (len < (CHUNK_SIZE_BUF - i)) ? len : (CHUNK_SIZE_BUF - i);
-            int ret = read_timeout(fcgi_sock, buf + MAX_LEN_SIZE_CHUNK + i, rd, conf->TimeoutCGI);
+            int rd = (len < (CHUNK_SIZE_BUF - offset)) ? len : (CHUNK_SIZE_BUF - offset);
+            int ret = read_timeout(fcgi_sock, buf + MAX_LEN_SIZE_CHUNK + offset, rd, conf->TimeoutCGI);
             if (ret <= 0)
             {
                 print_err("<%s:%d> ret=%d\n", __func__, __LINE__, ret);
-                i = 0;
+                offset = 0;
                 return -1;
             }
             else if (ret != rd)
             {
                 print_err("<%s:%d> ret != rd\n", __func__, __LINE__);
-                i = 0;
+                offset = 0;
                 return -1;
             }
 
-            i += ret;
+            offset += ret;
             len -= ret;
         }
 
@@ -299,11 +310,11 @@ public://---------------------------------------------------------------
         if (err) return -1;
         if (mode == SEND_CHUNK)
         {
-            int n = i;
+            int n = offset;
             const char *s = "\r\n0\r\n";
             int len = strlen(s);
-            memcpy(buf + MAX_LEN_SIZE_CHUNK + i, s, len);
-            i += len;
+            memcpy(buf + MAX_LEN_SIZE_CHUNK + offset, s, len);
+            offset += len;
             return send_chunk(n);
         }
         else if (mode == SEND_NO_CHUNK)

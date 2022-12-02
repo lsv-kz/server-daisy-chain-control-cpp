@@ -54,6 +54,7 @@
 typedef struct fcgi_list_addr {
     std::string script_name;
     std::string addr;
+    int type;
     struct fcgi_list_addr *next;
 } fcgi_list_addr;
 
@@ -65,16 +66,12 @@ enum {
     RS408,RS411 = 411,RS413 = 413,RS414,RS415,RS416,RS417,RS418,
     RS500 = 500,RS501,RS502,RS503,RS504,RS505
 };
-
 enum {
     M_GET = 1, M_HEAD, M_POST, M_OPTIONS, M_PUT,
     M_PATCH, M_DELETE, M_TRACE, M_CONNECT   
 };
-
 enum { HTTP09 = 1, HTTP10, HTTP11, HTTP2 };
-
-enum { cgi_ex = 1, php_cgi, php_fpm, fast_cgi };
-
+enum { cgi_ex = 1, php_cgi, php_fpm, fast_cgi, s_cgi };
 enum { EXIT_THR = 1 };
 
 const int NO_PRINT_LOG = -1000;
@@ -110,11 +107,12 @@ struct Config
     char SendFile;
     int SndBufSize;
 
+    int NumCpuCores;
     int MaxWorkConnections;
-    char FirstProcMain;
     int MaxEventConnections;
     
     unsigned int NumProc;
+    unsigned int MaxNumProc;
     unsigned int MaxThreads;
     unsigned int MinThreads;
     unsigned int MaxCgiProc;
@@ -151,17 +149,10 @@ struct Config
 
     ~Config()
     {
-        fcgi_list_addr *t;
-        while (fcgi_list)
-        {
-            t = fcgi_list;
-            fcgi_list = fcgi_list->next;
-            if (t)
-                delete t;
-        }
+        free_fcgi_list();
         //std::cout << __func__ << " ******* " << getpid() << " *******\n";
     }
-    
+
     void free_fcgi_list()
     {
         fcgi_list_addr *t;
@@ -172,7 +163,6 @@ struct Config
             if (t)
                 delete t;
         }
-        //std::cout << __func__ << " ******* " << getpid() << " *******\n";
     }
 };
 //----------------------------------------------------------------------
@@ -295,25 +285,20 @@ int options(Connect *req);
 int index_dir(Connect *req, std::string& path);
 int cgi(Connect *req);
 int fcgi(Connect *req);
+int scgi(Connect *req);
 int create_fcgi_socket(const char *host);
 //----------------------------------------------------------------------
 int encode(const char *s_in, char *s_out, int len_out);
 int decode(const char *s_in, int len_in, char *s_out, int len);
 //----------------------------------------------------------------------
 int read_timeout(int fd, char *buf, int len, int timeout);
+int write_timeout(int fd, const char *buf, int len, int timeout);
 
-int write_to_client(Connect *req, const char *buf, int len, int timeout);
-int write_to_script(int fd, const char *buf, int len, int timeout);
-
-int client_to_script(Connect *req, int fd_out, long long *cont_len);
+int client_to_cgi(int fd_in, int fd_out, long long *cont_len);
 void client_to_cosmos(Connect *req, long long *size);
-
 long cgi_to_cosmos(int fd_in, int timeout);
+
 long fcgi_to_cosmos(int fd_in, unsigned int size, int timeout);
-
-int script_to_file(int fd_in, int fd_out, int cont_len, int timeout);
-
-int fcgi_read_stderr(int fd, int cont_len, int timeout);
 
 int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *cont_len);
 //----------------------------------------------------------------------

@@ -64,11 +64,11 @@ void create_conf_file(const char *path)
     fprintf(f, "SndBufSize  32768\n\n");
 
     fprintf(f, "MaxWorkConnections   768\n");
-    fprintf(f, "FirstProcMain  n \n");
     fprintf(f, "MaxEventConnections  100\n\n");
 
     fprintf(f, "NumProc 1\n");
-    fprintf(f, "MaxThreads 300\n");
+    fprintf(f, "MaxNumProc 4\n");
+    fprintf(f, "MaxThreads 250\n");
     fprintf(f, "MinThreads 6\n");
     fprintf(f, "MaxCgiProc 15\n\n");
 
@@ -92,6 +92,10 @@ void create_conf_file(const char *path)
 
     fprintf(f, "fastcgi {\n"
                 "\t#/test  127.0.0.1:9009\n"
+                "}\n\n");
+
+    fprintf(f, "scgi {\n"
+                "\t#/scgi_test  127.0.0.1:9009\n"
                 "}\n\n");
 
     fprintf(f, "ShowMediaFiles  y #  y/n \n\n");
@@ -240,7 +244,7 @@ int find_bracket(FILE *f, char c)
     return 0;
 }
 //======================================================================
-void create_fcgi_list(fcgi_list_addr **l, const string &s1, const string &s2)
+void create_fcgi_list(fcgi_list_addr **l, const string &s1, const string &s2, int type)
 {
     if (l == NULL)
         fprintf(stderr, "<%s:%d> Error pointer = NULL\n", __func__, __LINE__), exit(errno);
@@ -258,6 +262,7 @@ void create_fcgi_list(fcgi_list_addr **l, const string &s1, const string &s2)
 
     t->script_name = s1;
     t->addr = s2;
+    t->type = type;
     t->next = *l;
     *l = t;
 }
@@ -294,10 +299,10 @@ int read_conf_file(FILE *fconf)
                 c.SendFile = (char)tolower(s2[0]);
             else if ((s1 == "SndBufSize") && is_number(s2.c_str()))
                 s2 >> c.SndBufSize;
+            else if ((s1 == "NumCpuCores") && is_number(s2.c_str()))
+                s2 >> c.NumCpuCores;
             else if ((s1 == "MaxWorkConnections") && is_number(s2.c_str()))
                 s2 >> c.MaxWorkConnections;
-            else if ((s1 == "FirstProcMain") && is_bool(s2.c_str()))
-                c.FirstProcMain = (char)tolower(s2[0]);
             else if ((s1 == "MaxEventConnections") && is_number(s2.c_str()))
                 s2 >> c.MaxEventConnections;
             else if ((s1 == "TimeoutPoll") && is_number(s2.c_str()))
@@ -312,6 +317,8 @@ int read_conf_file(FILE *fconf)
                 s2 >> c.PidFilePath;
             else if ((s1 == "NumProc") && is_number(s2.c_str()))
                 s2 >> c.NumProc;
+            else if ((s1 == "MaxNumProc") && is_number(s2.c_str()))
+                s2 >> c.MaxNumProc;
             else if ((s1 == "MaxThreads") && is_number(s2.c_str()))
                 s2 >> c.MaxThreads;
             else if ((s1 == "MinThreads") && is_number(s2.c_str()))
@@ -398,7 +405,30 @@ int read_conf_file(FILE *fconf)
                     ss >> s1;
                     ss >> s2;
 
-                    create_fcgi_list(&c.fcgi_list, s1, s2);
+                    create_fcgi_list(&c.fcgi_list, s1, s2, fast_cgi);
+                }
+
+                if (ss.str() != "}")
+                {
+                    fprintf(stderr, "<%s:%d> Error not found \"}\", line %d\n", __func__, __LINE__, line_);
+                    return -1;
+                }
+            }
+            else if (ss == "scgi")
+            {
+                if (find_bracket(fconf, '{') == 0)
+                {
+                    fprintf(stderr, "<%s:%d> Error not found \"{\", line %d\n", __func__, __LINE__, line_);
+                    return -1;
+                }
+
+                while (getLine(fconf, ss) == 2)
+                {
+                    string s1, s2;
+                    ss >> s1;
+                    ss >> s2;
+
+                    create_fcgi_list(&c.fcgi_list, s1, s2, s_cgi);
                 }
 
                 if (ss.str() != "}")
@@ -446,9 +476,9 @@ int read_conf_file(FILE *fconf)
         fprintf(stderr, "!!! Error ScriptPath [%s]\n", c.ScriptPath.c_str());
     }
 
-    if (c.NumProc > 8)
+    if (c.NumProc > c.MaxNumProc)
     {
-        fprintf(stderr, "<%s:%d> Error: Number of Processes = %d; [1 < NumChld <= 6]\n", __func__, __LINE__, c.NumProc);
+        fprintf(stderr, "<%s:%d> Error: NumProc=%u; MaxNumProc=%u\n", __func__, __LINE__, c.NumProc, c.MaxNumProc);
         return -1;
     }
 
@@ -461,11 +491,7 @@ int read_conf_file(FILE *fconf)
         return -1;
     }
     //------------------------------------------------------------------
-    /*if (thread::hardware_concurrency() == 1)
-        c.FirstProcMain = 'y';
-    else
-        c.FirstProcMain = 'n';
-    */
+    //c.NumCpuCores = thread::hardware_concurrency();
     //------------------- Setting OPEN_MAX -----------------------------
     if (c.MaxWorkConnections <= 0)
     {
@@ -485,7 +511,6 @@ int read_conf_file(FILE *fconf)
         c.MaxWorkConnections = n;
     }
 
-    //fprintf(stderr, "<%s:%d> max_fd=%d\n", __func__, __LINE__, n);
     return 0;
 }
 //======================================================================

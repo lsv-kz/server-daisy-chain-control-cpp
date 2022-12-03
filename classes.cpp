@@ -296,7 +296,7 @@ void ArrayRanges::parse_ranges(char *sRange)
 
             if (end >= size)
                 end = size - 1;
-            
+
             if (start <= end)
             {
                 (*this) << Range{start, end, end - start + 1};

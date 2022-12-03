@@ -107,7 +107,8 @@ struct Config
     char SendFile;
     int SndBufSize;
 
-    int NumCpuCores;
+    unsigned int NumCpuCores;
+
     int MaxWorkConnections;
     int MaxEventConnections;
     
@@ -273,8 +274,6 @@ public:
     int end_thr(int);
     int wait_create_thr(int*);
     void close_manager();
-
-    void print_intr();
 };
 //----------------------------------------------------------------------
 extern char **environ;

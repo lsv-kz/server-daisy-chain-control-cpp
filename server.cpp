@@ -244,10 +244,10 @@ int main(int argc, char *argv[])
         restart = 0;
 
         if (read_conf_file(conf_path.c_str()))
-            break;
+            return 1;
 
         set_uid();
-
+        //--------------------------------------------------------------
         sockServer = create_server_socket(conf);
         if (sockServer == -1)
         {
@@ -257,7 +257,7 @@ int main(int argc, char *argv[])
         }
 
         Connect::serverSocket = sockServer;
-
+        //--------------------------------------------------------------
         if (start == 0)
         {
             start = 1;

@@ -98,6 +98,7 @@ int cgi_chunk(Connect *req, String *hdrs, int cgi_serv_in, char *tail_ptr, int t
         if (send_response_headers(req, hdrs))
         {
             print_err("<%s:%d> Error send_header_response()\n", __func__, __LINE__);
+            return -1;
         }
 
         return 0;
@@ -381,7 +382,7 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
             {
                 print_err(req, "<%s:%d> Error client_to_script() = %d\n", __func__, __LINE__, wr_bytes);
                 close(serv_cgi[1]);
-                return -1;
+                return -RS500;
             }
         }
 
@@ -463,7 +464,7 @@ int cgi(Connect *req)
     if (n == -1)
     {
         print_err(req, "<%s:%d> Error pipe()=%d\n", __func__, __LINE__, n);
-        ret = -1;
+        ret = -RS500;
         goto errExit1;
     }
     
@@ -471,7 +472,7 @@ int cgi(Connect *req)
     if (n == -1)
     {
         print_err(req, "<%s:%d> Error pipe()=%d\n", __func__, __LINE__, n);
-        ret = -1;
+        ret = -RS500;
         close(serv_cgi[0]);
         close(serv_cgi[1]);
         goto errExit1;

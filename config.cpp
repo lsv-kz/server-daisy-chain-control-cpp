@@ -48,50 +48,51 @@ void create_conf_file(const char *path)
     }
 
     fprintf(f, "ServerSoftware  ?\n");
-    fprintf(f, "ServerAddr      0.0.0.0\n");
-    fprintf(f, "ServerPort      8080\n\n");
+    fprintf(f, "ServerAddr  0.0.0.0\n");
+    fprintf(f, "ServerPort  8080\n\n");
 
-    fprintf(f, "ListenBacklog 128\n");
-    fprintf(f, "tcp_cork      n # y/n \n");
-    fprintf(f, "tcp_nodelay   y \n\n");
+    fprintf(f, "ListenBacklog  128\n");
+    fprintf(f, "tcp_cork  n # y/n \n");
+    fprintf(f, "tcp_nodelay  y \n\n");
 
-    fprintf(f, "DocumentRoot www/html\n");
-    fprintf(f, "ScriptPath   www/cgi-bin\n");
-    fprintf(f, "LogPath      www/logs\n\n");
+    fprintf(f, "DocumentRoot  www/html\n");
+    fprintf(f, "ScriptPath  www/cgi-bin\n");
+    fprintf(f, "LogPath  www/logs\n\n");
     fprintf(f, "PidFilePath  www/pid\n\n");
 
-    fprintf(f, "SendFile    y\n");
+    fprintf(f, "SendFile  y\n");
     fprintf(f, "SndBufSize  32768\n\n");
 
-    fprintf(f, "MaxWorkConnections   768\n");
+    fprintf(f, "NumCpuCores  1\n");
+    fprintf(f, "MaxWorkConnections  768\n");
     fprintf(f, "MaxEventConnections  100\n\n");
 
-    fprintf(f, "NumProc 1\n");
-    fprintf(f, "MaxNumProc 4\n");
-    fprintf(f, "MaxThreads 250\n");
-    fprintf(f, "MinThreads 6\n");
-    fprintf(f, "MaxCgiProc 15\n\n");
+    fprintf(f, "NumProc  1\n");
+    fprintf(f, "MaxNumProc  4\n");
+    fprintf(f, "MaxThreads  250\n");
+    fprintf(f, "MinThreads  6\n");
+    fprintf(f, "MaxCgiProc  15\n\n");
 
-    fprintf(f, "MaxRequestsPerClient 10000\n");
-    fprintf(f, "TimeoutKeepAlive 15\n");
-    fprintf(f, "Timeout      120\n");
-    fprintf(f, "TimeoutCGI    15\n\n");
+    fprintf(f, "MaxRequestsPerClient  100\n");
+    fprintf(f, "TimeoutKeepAlive  15\n");
+    fprintf(f, "Timeout  120\n");
+    fprintf(f, "TimeoutCGI  15\n");
     fprintf(f, "TimeoutPoll  100\n\n");
 
     fprintf(f, "MaxRanges  5\n\n");
 
-    fprintf(f, "ClientMaxBodySize 10000000\n\n");
+    fprintf(f, "ClientMaxBodySize  10000000\n\n");
 
-    fprintf(f, " UsePHP     n  # [n, php-fpm, php-cgi]\n");
+    fprintf(f, " UsePHP  n  # [n, php-fpm, php-cgi]\n");
     fprintf(f, "# PathPHP  127.0.0.1:9000  #  [php-fpm: 127.0.0.1:9000 (/var/run/php-fpm.sock), php-cgi: /usr/bin/php-cgi]\n\n");
 
-    fprintf(f, "AutoIndex   n\n");
+    fprintf(f, "AutoIndex  n\n");
     fprintf(f, "index {\n"
                 "\t#index.html\n"
                 "}\n\n");
 
     fprintf(f, "fastcgi {\n"
-                "\t#/test  127.0.0.1:9009\n"
+                "\t#/test  127.0.0.1:9005\n"
                 "}\n\n");
 
     fprintf(f, "scgi {\n"
@@ -100,7 +101,7 @@ void create_conf_file(const char *path)
 
     fprintf(f, "ShowMediaFiles  y #  y/n \n\n");
 
-    fprintf(f, "User   root\n");
+    fprintf(f, "User  root\n");
     fprintf(f, "Group  www-data\n");
 
     fclose(f);
@@ -247,7 +248,10 @@ int find_bracket(FILE *f, char c)
 void create_fcgi_list(fcgi_list_addr **l, const string &s1, const string &s2, int type)
 {
     if (l == NULL)
-        fprintf(stderr, "<%s:%d> Error pointer = NULL\n", __func__, __LINE__), exit(errno);
+    {
+        fprintf(stderr, "<%s:%d> Error pointer = NULL\n", __func__, __LINE__);
+        exit(errno);
+    }
 
     fcgi_list_addr *t;
     try
@@ -475,13 +479,7 @@ int read_conf_file(FILE *fconf)
         c.ScriptPath = "";
         fprintf(stderr, "!!! Error ScriptPath [%s]\n", c.ScriptPath.c_str());
     }
-
-    if (c.NumProc > c.MaxNumProc)
-    {
-        fprintf(stderr, "<%s:%d> Error: NumProc=%u; MaxNumProc=%u\n", __func__, __LINE__, c.NumProc, c.MaxNumProc);
-        return -1;
-    }
-
+    //------------------------------------------------------------------
     if (c.MinThreads < 1)
         c.MinThreads = 1;
 
@@ -492,6 +490,14 @@ int read_conf_file(FILE *fconf)
     }
     //------------------------------------------------------------------
     //c.NumCpuCores = thread::hardware_concurrency();
+    if (c.NumProc > c.MaxNumProc)
+    {
+        fprintf(stderr, "<%s:%d> Error: NumProc=%u; MaxNumProc=%u\n", __func__, __LINE__, c.NumProc, c.MaxNumProc);
+        return -1;
+    }
+
+    if (c.NumProc < c.NumCpuCores)
+        c.NumProc = 4;
     //------------------- Setting OPEN_MAX -----------------------------
     if (c.MaxWorkConnections <= 0)
     {
@@ -551,7 +557,7 @@ int set_uid()
             struct passwd *passwdbuf = getpwuid(c.server_uid);
             if (!passwdbuf)
             {
-                fprintf(stderr, "<%s:%d> Error getpwuid(%d): %s\n", __func__, __LINE__, c.server_uid, strerror(errno));
+                fprintf(stderr, "<%s:%d> Error getpwuid(%u): %s\n", __func__, __LINE__, c.server_uid, strerror(errno));
                 return -1;
             }
         }
@@ -572,7 +578,7 @@ int set_uid()
             struct group *groupbuf = getgrgid(c.server_gid);
             if (!groupbuf)
             {
-                fprintf(stderr, "<%s:%d> Error getgrgid(%d): %s\n", __func__, __LINE__, c.server_gid, strerror(errno));
+                fprintf(stderr, "<%s:%d> Error getgrgid(%u): %s\n", __func__, __LINE__, c.server_gid, strerror(errno));
                 return -1;
             }
         }

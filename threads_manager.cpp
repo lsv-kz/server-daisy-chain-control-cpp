@@ -237,7 +237,7 @@ static void signal_handler_child(int sig)
 {
     if (sig == SIGINT)
     {
-        //print_err("[%d] <%s:%d> ### SIGINT ### all_req=%d\n", nProc, __func__, __LINE__, all_req);
+        print_err("[%d] <%s:%d> ### SIGINT ### all_req=%d\n", nProc, __func__, __LINE__, all_req);
     }
     else if (sig == SIGTERM)
     {
@@ -251,6 +251,8 @@ static void signal_handler_child(int sig)
     }
     else if (sig == SIGUSR1)
         print_err("[%d] <%s:%d> ### SIGUSR1 ###\n", nProc, __func__, __LINE__);
+    else if (sig == SIGUSR2)
+        print_err("[%d] <%s:%d> ### SIGUSR2 ###\n", nProc, __func__, __LINE__);
     else
         print_err("[%d] <%s:%d> sig=%d\n", nProc, __func__, __LINE__, sig);
 }
@@ -289,18 +291,21 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
         exit(EXIT_FAILURE);
     }
 
-    if ((numProc + 1) < conf->NumProc)
+    if (signal(SIGTERM, signal_handler_child) == SIG_ERR)
     {
-        if (signal(SIGTERM, signal_handler_child) == SIG_ERR)
-        {
-            fprintf(stderr, "<%s:%d> Error signal(SIGTERM): %s\n", __func__, __LINE__, strerror(errno));
-            exit(EXIT_FAILURE);
-        }
+        fprintf(stderr, "<%s:%d> Error signal(SIGTERM): %s\n", __func__, __LINE__, strerror(errno));
+        exit(EXIT_FAILURE);
     }
 
     if (signal(SIGUSR1, signal_handler_child) == SIG_ERR)
     {
         print_err("[%d] <%s:%d> Error signal(SIGUSR1): %s\n", numProc, __func__, __LINE__, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    if (signal(SIGUSR2, signal_handler_child) == SIG_ERR)
+    {
+        print_err("[%d] <%s:%d> Error signal(SIGUSR2): %s\n", numProc, __func__, __LINE__, strerror(errno));
         exit(EXIT_FAILURE);
     }
     //------------------------------------------------------------------
@@ -480,9 +485,9 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
 
     close(sockServer);
 
-    n = ReqMan->get_num_thr();
     print_err("[%d] <%s:%d>  numThr=%d; allNumThr=%u; all_req=%u; open_conn=%d, status=%u\n", numProc, 
-                    __func__, __LINE__, n, ReqMan->get_all_thr(), all_req, num_conn, (unsigned int)status);
+                    __func__, __LINE__, ReqMan->get_num_thr(), ReqMan->get_all_thr(), all_req, num_conn, (unsigned int)status);
+
     ReqMan->close_manager();
     close_event_handler();
 

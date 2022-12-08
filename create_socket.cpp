@@ -12,7 +12,7 @@ int create_server_socket(const Config *conf)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
-    if ((n = getaddrinfo(conf->ServerAddr.c_str(), conf->ServerPort.c_str(), &hints, &result)) != 0) 
+    if ((n = getaddrinfo(conf->ServerAddr.c_str(), conf->ServerPort.c_str(), &hints, &result)) != 0)
     {
         fprintf(stderr, "Error getaddrinfo(%s:%s): %s\n", conf->ServerAddr.c_str(), conf->ServerPort.c_str(), gai_strerror(n));
         return -1;
@@ -32,7 +32,7 @@ int create_server_socket(const Config *conf)
 
     freeaddrinfo(result);
 
-    if (rp == NULL) 
+    if (rp == NULL)
     {
         fprintf(stderr, "Error: failed to bind\n");
         return -1;
@@ -57,7 +57,7 @@ int create_server_socket(const Config *conf)
         }
     }
 
-    if (listen(sockfd, conf->ListenBacklog) == -1) 
+    if (listen(sockfd, conf->ListenBacklog) == -1)
     {
         fprintf(stderr, "Error listen(): %s\n", strerror(errno));
         close(sockfd);

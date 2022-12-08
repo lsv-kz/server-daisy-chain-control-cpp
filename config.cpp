@@ -122,7 +122,7 @@ int getLine(FILE *f, String &ss)
 
     ss = "";
     int ch, len = 0, numWords = 0, wr = 1, wrSpace = 0;
-    
+
     if (line_inc)
     {
         ++line_;
@@ -541,7 +541,7 @@ int read_conf_file(const char *path_conf)
             fprintf(stderr, "<%s:%d> Error fopen(%s): %s\n", __func__, __LINE__, path_conf, strerror(errno));
         return -1;
     }
-    
+
     return read_conf_file(fconf);
 }
 //======================================================================

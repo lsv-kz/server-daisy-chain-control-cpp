@@ -30,7 +30,6 @@ class String
         }
         return 0;
     }
-    
     //------------------------------------------------------------------
     void append(char ch)
     {
@@ -133,7 +132,7 @@ public:
     String(){}
     explicit String(unsigned int n) { buf.reserve(n); }
     String(const String&) = delete;
-    
+
     String & operator >> (double&) = delete;
     String& operator >> (char*) = delete;
     //------------------------------------------------------------------
@@ -237,7 +236,7 @@ public:
         ll = 0;
         int max_len = 20;
         char s[21];
-        
+
         if (base_ == 16)
             max_len = sizeof(long long) * 2;
         else
@@ -257,7 +256,7 @@ public:
         li = 0;
         int max_len = 11;
         char s[12];
-        
+
         if (base_ == 16)
             max_len = sizeof(int) * 2;
         else
@@ -274,7 +273,7 @@ public:
         li = 0;
         int max_len = 11;
         char s[12];
-        
+
         if (base_ == 16)
             max_len = sizeof(int) * 2;
         else
@@ -307,7 +306,7 @@ public:
     {
         return buf.c_str();
     }
-    
+
     const std::string& str() const
     {
         return buf;

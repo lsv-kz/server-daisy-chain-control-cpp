@@ -118,7 +118,7 @@ int send_part_file(Connect *req)
         else if (rd != wr)
             lseek(req->fd, wr - rd, SEEK_CUR);
     }
-    
+
     req->send_bytes += wr;
     req->respContentLength -= wr;
     if (req->respContentLength == 0)
@@ -133,7 +133,7 @@ static void del_from_list(Connect *r)
         close(r->fd);
     else
         get_time(r->sLogTime);
-    
+
     if (r->prev && r->next)
     {
         r->prev->next = r->next;
@@ -162,7 +162,7 @@ mtx_.lock();
             work_list_end->next = wait_list_start;
         else
             work_list_start = wait_list_start;
-        
+
         wait_list_start->prev = work_list_end;
         work_list_end = wait_list_end;
         wait_list_start = wait_list_end = NULL;
@@ -175,7 +175,7 @@ mtx_.unlock();
     for ( ; r; r = next)
     {
         next = r->next;
-        
+
         if (((t - r->sock_timer) >= r->timeout) && (r->sock_timer != 0))
         {
             if (r->lenBufReq)
@@ -237,7 +237,7 @@ int poll_(int num_chld, int i, int nfd, RequestManager *ReqMan)
                 del_from_list(r);
                 end_response(r);
             }
-            else if (wr > 0) 
+            else if (wr > 0)
                 r->sock_timer = 0;
             else if (wr == -EAGAIN)
             {
@@ -344,7 +344,7 @@ void event_handler(RequestManager *ReqMan)
             if (close_thr)
                 break;
         }
-        
+
         count_resp = set_list();
         if (count_resp == 0)
             continue;

@@ -8,7 +8,7 @@ int cgi_read_headers(Connect *req, int scgi_sock);
 int scgi_send_param(Connect *req, int scgi_sock)
 {
     SCGI_client Scgi(scgi_sock, conf->TimeoutCGI);
-    
+
     if (req->reqMethod == M_POST)
         Scgi.add("CONTENT_LENGTH", req->reqHdValue[req->req_hd.iReqContentLength]);
     else
@@ -35,18 +35,18 @@ int scgi_send_param(Connect *req, int scgi_sock)
         Scgi.add("DOCUMENT_URI", req->uri, p - req->uri);
     else
         Scgi.add("DOCUMENT_URI", req->uri);
-    
+
     Scgi.add("DOCUMENT_ROOT", conf->DocumentRoot.c_str());
     Scgi.add("SCGI", "1");
-    
+
     if (Scgi.error())
     {
         fprintf(stderr, "<%s:%d> Error send_param()\n", __func__, __LINE__);
         return -1;
     }
-    
+
     Scgi.send_headers();
-    
+
     if (req->reqMethod == M_POST)
     {
         if (req->tail)
@@ -59,7 +59,7 @@ int scgi_send_param(Connect *req, int scgi_sock)
             }
             req->req_hd.reqContentLength -= ret;
         }
-        
+
         while (req->req_hd.reqContentLength > 0)
         {
             int rd;
@@ -74,7 +74,7 @@ int scgi_send_param(Connect *req, int scgi_sock)
                 print_err(req, "<%s:%d> Error read_timeout()\n", __func__, __LINE__);
                 return -1;
             }
-            
+
             req->req_hd.reqContentLength -= ret;
             ret = Scgi.scgi_send(buf, ret);
             if (ret < 0)
@@ -84,7 +84,7 @@ int scgi_send_param(Connect *req, int scgi_sock)
             }
         }
     }
-    
+
     int ret = cgi_read_headers(req, scgi_sock);
     return ret;
 }
@@ -94,7 +94,7 @@ int get_sock_fcgi(Connect *req, const char *script);
 int scgi(Connect *req)
 {
     int  sock_scgi;
-    
+
     if (req->reqMethod == M_POST)
     {
         if (req->req_hd.iReqContentType < 0)
@@ -139,7 +139,7 @@ int scgi(Connect *req)
         else
             return -RS502;
     }
-    
+
     int ret = scgi_send_param(req, sock_scgi);
     close(sock_scgi);
 

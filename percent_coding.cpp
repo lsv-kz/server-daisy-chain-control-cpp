@@ -11,16 +11,16 @@ int encode(const char *s_in, char *s_out, int len_out)
     char Az09[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "abcdefghijklmnopqrstuvwxyz" "0123456789" "/:-_.!~*'()";
 
-    if((!s_in) || (!s_out))
+    if ((!s_in) || (!s_out))
         return 0;
-    
-    while((c = *s_in++))
+
+    while ((c = *s_in++))
     {
-        if(c <= 0x7f)
+        if (c <= 0x7f)
         {
-            if(!strchr(Az09, c))
+            if (!strchr(Az09, c))
             {
-                if((cnt_o + 3) < len_out)
+                if ((cnt_o + 3) < len_out)
                 {
                     *p++ = '%';
                     d = c >> 4;
@@ -35,9 +35,9 @@ int encode(const char *s_in, char *s_out, int len_out)
                     return 0;
                 }
             }
-            else if(c == ' ')
+            else if (c == ' ')
             {
-                if((cnt_o + 1) < len_out)
+                if ((cnt_o + 1) < len_out)
                 {
                     *p++ = '+';
                     cnt_o++;
@@ -50,7 +50,7 @@ int encode(const char *s_in, char *s_out, int len_out)
             }
             else
             {
-                if((cnt_o + 1) < len_out)
+                if ((cnt_o + 1) < len_out)
                 {
                     *p++ = c;
                     cnt_o++;
@@ -64,7 +64,7 @@ int encode(const char *s_in, char *s_out, int len_out)
         }
         else
         {
-            if((cnt_o + 3) < len_out)
+            if ((cnt_o + 3) < len_out)
             {
                 *p++ = '%';
                 d = c >> 4;
@@ -106,7 +106,7 @@ int decode(const char *s_in, int len_in, char *s_out, int len)
                 *p = 0;
                 return 0;
             }
-            
+
             tmp[0] = *(s_in++);
             tmp[1] = *(s_in++);
             tmp[2] = 0;
@@ -119,7 +119,7 @@ int decode(const char *s_in, int len_in, char *s_out, int len)
                 *p = 0;
                 return 0;
             }
-                
+
             *p = (char)i;
         }
         else if (c == '+')

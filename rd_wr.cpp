@@ -14,7 +14,7 @@ int read_timeout(int fd, char *buf, int len, int timeout)
     int read_bytes = 0, ret, tm;
     struct pollfd fdrd;
     char *p;
-    
+
     tm = (timeout == -1) ? -1 : (timeout * 1000);
 
     fdrd.fd = fd;
@@ -62,7 +62,7 @@ int write_timeout(int fd, const char *buf, int len, int timeout)
 {
     int write_bytes = 0, ret;
     struct pollfd fdwr;
-    
+
     fdwr.fd = fd;
     fdwr.events = POLLOUT;
 
@@ -81,13 +81,13 @@ int write_timeout(int fd, const char *buf, int len, int timeout)
             print_err("<%s:%d> TimeOut poll(), tm=%d\n", __func__, __LINE__, timeout);
             return -1;
         }
-        
+
         if (fdwr.revents != POLLOUT)
         {
             print_err("<%s:%d> 0x%02x\n", __func__, __LINE__, fdwr.revents);
             return -1;
         }
-        
+
         ret = write(fd, buf, len);
         if (ret == -1)
         {
@@ -114,7 +114,7 @@ int client_to_cgi(int fd_in, int fd_out, long long *cont_len)
     for ( ; *cont_len > 0; )
     {
         rd = (*cont_len > (int)sizeof(buf)) ? (int)sizeof(buf) : *cont_len;
-        
+
         ret = read_timeout(fd_in, buf, rd, conf->Timeout);
         if (ret == -1)
             return -1;
@@ -161,13 +161,13 @@ long cgi_to_cosmos(int fd_in, int timeout)
     for (; ; )
     {
         rd = read_timeout(fd_in, buf, sizeof(buf), timeout);
-        if(rd == -1)
+        if (rd == -1)
         {
             if (errno == EINTR)
                 continue;
             return -1;
         }
-        else if(rd == 0)
+        else if (rd == 0)
             break;
         wr_bytes += rd;
     }
@@ -184,15 +184,15 @@ long fcgi_to_cosmos(int fd_in, unsigned int size, int timeout)
     for (; size > 0; )
     {
         rd = read_timeout(fd_in, buf, (size > sizeof(buf)) ? sizeof(buf) : size, timeout);
-        if(rd == -1)
+        if (rd == -1)
         {
             if (errno == EINTR)
                 continue;
             return -1;
         }
-        else if(rd == 0)
+        else if (rd == 0)
             break;
-        
+
         size -= rd;
         wr_bytes += rd;
     }
@@ -212,7 +212,7 @@ int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *c
             rd = read(req->fd, buf, *cont_len);
         else
             rd = read(req->fd, buf, size);
-        
+
         if (rd == -1)
         {
             print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
@@ -229,7 +229,7 @@ int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *c
             print_err(req, "<%s:%d> Error write_to_sock()=%d, %d\n", __func__, __LINE__, wr, rd);
             return -1;
         }
-        
+
         *cont_len -= wr;
     }
 

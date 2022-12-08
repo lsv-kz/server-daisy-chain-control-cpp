@@ -200,13 +200,14 @@ public://---------------------------------------------------------------
     {
         if (err) return -1;
         if (!s) return -1;
+
+        lenEntity += len;
+
         if (mode == NO_SEND)
         {
             allSend += len;
             return 0;
         }
-
-        lenEntity += len;
 
         int n = 0;
         while (CHUNK_SIZE_BUF < (offset + len))
@@ -262,47 +263,6 @@ public://---------------------------------------------------------------
         }
 
         return all_rd;
-    }
-    //------------------------------------------------------------------
-    int fcgi_to_client(int fcgi_sock, int len)
-    {
-        if (err) return -1;
-        if (mode == NO_SEND)
-        {
-            allSend += len;
-            fcgi_to_cosmos(fcgi_sock, len, conf->TimeoutCGI);
-            return 0;
-        }
-
-        while (len > 0)
-        {
-            if (CHUNK_SIZE_BUF <= offset)
-            {
-                int ret = send_chunk(offset);
-                if (ret < 0)
-                    return ret;
-            }
-
-            int rd = (len < (CHUNK_SIZE_BUF - offset)) ? len : (CHUNK_SIZE_BUF - offset);
-            int ret = read_timeout(fcgi_sock, buf + MAX_LEN_SIZE_CHUNK + offset, rd, conf->TimeoutCGI);
-            if (ret <= 0)
-            {
-                print_err("<%s:%d> ret=%d\n", __func__, __LINE__, ret);
-                offset = 0;
-                return -1;
-            }
-            else if (ret != rd)
-            {
-                print_err("<%s:%d> ret != rd\n", __func__, __LINE__);
-                offset = 0;
-                return -1;
-            }
-
-            offset += ret;
-            len -= ret;
-        }
-
-        return 0;
     }
     //------------------------------------------------------------------
     int end()

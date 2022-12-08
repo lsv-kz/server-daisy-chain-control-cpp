@@ -361,7 +361,7 @@ int response2(Connect *req)
             return -RS403;
         else
         {
-            print_err(req, "<%s:%d> Error open(%s): %s\n", __func__, __LINE__, 
+            print_err(req, "<%s:%d> Error open(%s): %s\n", __func__, __LINE__,
                                     path.c_str(), strerror(errno));
             return -RS500;
         }
@@ -485,7 +485,7 @@ int send_multypart(Connect *req, ArrayRanges& rg, char *rd_buf, int size)
         {
             print_err(req, "<%s:%d> Error create_multipart_head()=%d\n", __func__, __LINE__, n);
             return -1;
-        } 
+        }
 
         n = write_timeout(req->clientSocket, buf, strlen(buf), conf->Timeout);
         if (n < 0)

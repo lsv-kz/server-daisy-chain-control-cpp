@@ -101,7 +101,7 @@ void print_limits()
 void print_config()
 {
     print_limits();
-    
+
     cout << "   ServerSoftware         : " << conf->ServerSoftware.c_str()
          << "\n\n   ServerAddr             : " << conf->ServerAddr.c_str()
          << "\n   ServerPort             : " << conf->ServerPort.c_str()
@@ -145,7 +145,7 @@ void print_config()
          << "\n\n   User                   : " << conf->user.c_str()
          << "\n   Group                  : " << conf->group.c_str()
          << "\n";
-         
+
     cout << "   ------------- FastCGI -------------\n";
     fcgi_list_addr *i = conf->fcgi_list;
     for (; i; i = i->next)
@@ -215,7 +215,7 @@ int main(int argc, char *argv[])
                 print_help(argv[0]);
                 return 1;
             }
-            
+
             if (read_conf_file(conf_path.c_str()))
                 return 1;
             pidFile = conf->PidFilePath + "/pid.txt";
@@ -251,7 +251,7 @@ int main(int argc, char *argv[])
         sockServer = create_server_socket(conf);
         if (sockServer == -1)
         {
-            fprintf(stderr, "<%s:%d> Error: create_server_socket(%s:%s)\n", __func__, __LINE__, 
+            fprintf(stderr, "<%s:%d> Error: create_server_socket(%s:%s)\n", __func__, __LINE__,
                         conf->ServerAddr.c_str(), conf->ServerPort.c_str());
             break;
         }
@@ -321,7 +321,7 @@ int main_proc()
     pid_t pid = getpid();
     //------------------------------------------------------------------
     cout << "\n[" << get_time().c_str() << "] - server \"" << conf->ServerSoftware.c_str()
-         << "\" run port: " << conf->ServerPort.c_str() << "\n";
+         << "\" run, port: " << conf->ServerPort.c_str() << "\n";
     cerr << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
     cout << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
     cerr << "   MaxWorkConnections: " << conf->MaxWorkConnections << ", NumCpuCores: " << conf->NumCpuCores << "\n";

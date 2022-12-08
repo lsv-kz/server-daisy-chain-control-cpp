@@ -25,9 +25,9 @@ int send_response_headers(Connect *req, const String *hdrs)
         if (req->respContentType)
             resp << "Content-Type: " << req->respContentType << "\r\n";
         resp << "Content-Length: " << req->respContentLength << "\r\n";
-        
-        resp << "Content-Range: bytes " << req->offset << "-" 
-                                        << (req->offset + req->respContentLength - 1) 
+
+        resp << "Content-Range: bytes " << req->offset << "-"
+                                        << (req->offset + req->respContentLength - 1)
                                         << "/" << req->fileSize << "\r\n";
     }
     else if (req->numPart == 0)
@@ -40,7 +40,7 @@ int send_response_headers(Connect *req, const String *hdrs)
             if (req->respStatus == RS200)
                 resp << "Accept-Ranges: bytes\r\n";
         }
-        
+
         if (req->respStatus == RS416)
             resp << "Content-Range: bytes */" << req->fileSize << "\r\n";
     }

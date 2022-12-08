@@ -19,7 +19,7 @@ void create_logfiles(const string& log_dir)
     fileName << log_dir << '/' << buf << '-' << conf->ServerSoftware << ".log";
 
     flog = open(fileName.c_str(), O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if(flog == -1)
+    if (flog == -1)
     {
         cerr << "  Error create log: " << fileName.c_str() << "\n";
         exit(1);
@@ -29,7 +29,7 @@ void create_logfiles(const string& log_dir)
     fileName << log_dir << "/error_" << buf << '_' << conf->ServerSoftware << ".log";
 
     flog_err = open(fileName.c_str(), O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if(flog_err == -1)
+    if (flog_err == -1)
     {
         cerr << "  Error create log_err: " << fileName.c_str() << "\n";
         exit(1);
@@ -83,7 +83,7 @@ void print_log(Connect *req)
     {
         ss  << req->numProc << "/" << req->numConn << "/" << req->numReq << " - " << req->remoteAddr
             << " - [" << log_time() << "] - \"-\" "
-            << req->respStatus << " " << req->send_bytes 
+            << req->respStatus << " " << req->send_bytes
             << " \"" << ((req->req_hd.iReferer >= 0) ? req->reqHdValue[req->req_hd.iReferer] : "-") << "\" \"-\"\n";
     }
     else

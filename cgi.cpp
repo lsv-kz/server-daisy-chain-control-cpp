@@ -372,7 +372,7 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
                 {
                     print_err(req, "<%s:%d> Error tail to script: %d\n", __func__, __LINE__, wr_bytes);
                     close(serv_cgi[1]);
-                    return -RS500;
+                    return -RS502;
                 }
                 req->req_hd.reqContentLength -= wr_bytes;
             }
@@ -382,7 +382,7 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
             {
                 print_err(req, "<%s:%d> Error client_to_script() = %d\n", __func__, __LINE__, wr_bytes);
                 close(serv_cgi[1]);
-                return -RS500;
+                return -RS502;
             }
         }
 
@@ -419,15 +419,7 @@ int cgi(Connect *req)
         if (req->req_hd.reqContentLength > conf->ClientMaxBodySize)
         {
             print_err(req, "<%s:%d> 413 Request entity too large: %lld\n", __func__, __LINE__, req->req_hd.reqContentLength);
-            if (req->req_hd.reqContentLength < 50000000)
-            {
-                if (req->tail)
-                    req->req_hd.reqContentLength -= req->lenTail;
-                client_to_cosmos(req, &req->req_hd.reqContentLength);
-                if (req->req_hd.reqContentLength == 0)
-                    return -RS413;
-            }
-            return -1;
+            return -RS413;
         }
     }
 
@@ -467,7 +459,7 @@ int cgi(Connect *req)
         ret = -RS500;
         goto errExit1;
     }
-    
+
     n = pipe(cgi_serv);
     if (n == -1)
     {

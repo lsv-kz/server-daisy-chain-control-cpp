@@ -352,7 +352,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
     }
     catch (...)
     {
-        print_err("<%s:%d> Error create thread %d: errno=%d\n", __func__, 
+        print_err("<%s:%d> Error create thread %d: errno=%d\n", __func__,
                 __LINE__, ReqMan->get_all_thr(), errno);
         exit(errno);
     }
@@ -420,7 +420,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             status = ch;
             continue;
         }
-        
+
         if (fdrd[1].revents == POLLIN)
         {
             --ret_poll;
@@ -467,7 +467,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
 
         if (ret_poll)
         {
-            print_err("[%d] <%s:%d>  Error: pipe revents=0x%x; socket revents=0x%x\n", 
+            print_err("[%d] <%s:%d>  Error: pipe revents=0x%x; socket revents=0x%x\n",
                         numProc, __func__, __LINE__, fdrd[0].revents, fdrd[1].revents);
             break;
         }
@@ -485,7 +485,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
 
     close(sockServer);
 
-    print_err("[%d] <%s:%d>  numThr=%d; allNumThr=%u; all_req=%u; open_conn=%d, status=%u\n", numProc, 
+    print_err("[%d] <%s:%d>  numThr=%d; allNumThr=%u; all_req=%u; open_conn=%d, status=%u\n", numProc,
                     __func__, __LINE__, ReqMan->get_num_thr(), ReqMan->get_all_thr(), all_req, num_conn, (unsigned int)status);
 
     ReqMan->close_manager();
@@ -496,7 +496,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
 
     usleep(100000);
     close(fd_out);
-    
+
     delete ReqMan;
 }
 //======================================================================
@@ -511,7 +511,7 @@ Connect *create_req(void)
 int write_(int fd, void *data, int size)
 {
     int ret, err;
-a1: 
+a1:
     ret = write(fd, data, size);
     if (ret < 0)
     {
@@ -526,7 +526,7 @@ a1:
 int read_(int fd, void *data, int size)
 {
     int ret, err;
-a1: 
+a1:
     ret = read(fd, data, size);
     if (ret < 0)
     {

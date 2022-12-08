@@ -94,7 +94,7 @@ class FCGI_client
                 ret = -1;
                 break;
             }
-            
+
             if (fdwr.revents != POLLOUT)
             {
                 ret = -1;
@@ -113,7 +113,7 @@ class FCGI_client
             len -= ret;
             p += ret;
         }
-        
+
         if (ret <= 0)
             err = 1;
         else
@@ -129,11 +129,11 @@ class FCGI_client
         int read_bytes = 0, ret;
         struct pollfd fdrd;
         char *p;
-        
+
         fdrd.fd = fcgi_sock;
         fdrd.events = POLLIN;
         p = buf;
-        
+
         while (len > 0)
         {
             ret = poll(&fdrd, 1, TimeoutCGI * 1000);
@@ -185,13 +185,13 @@ class FCGI_client
         *p++ = (unsigned char)type;
         *p++ = (unsigned char) ((1 >> 8) & 0xff);
         *p++ = (unsigned char) ((1) & 0xff);
-    
+
         *p++ = (unsigned char) ((len >> 8) & 0xff);
         *p++ = (unsigned char) ((len) & 0xff);
-    
+
         *p++ = padding;
         *p = 0;
-        
+
         if (padding)
         {
             memcpy(fcgi_buf + SIZE_HEADER + offset_out, str_zero, padding);
@@ -214,7 +214,7 @@ class FCGI_client
         ptr_buf[offset_out++] = 0;
         ptr_buf[offset_out++] = 0;
         fcgi_set_header(fcgi_buf, FCGI_BEGIN_REQUEST, offset_out);
-        
+
         fcgi_send();
     }
     //------------------------------------------------------------------
@@ -225,7 +225,7 @@ class FCGI_client
 
         int n;
         char buf[8];
-    
+
         n = fcgi_read(buf, 8);
         if (n <= 0)
             return n;
@@ -236,7 +236,7 @@ class FCGI_client
 
         return n;
     }
-    
+
     FCGI_client() {}
 public://===============================================================
     FCGI_client(int sock, int timeout)
@@ -268,16 +268,16 @@ public://===============================================================
         }
 
         size_t len_name = strlen(name), len_val, len;
-        
+
         if (val)
             len_val = strlen(val);
         else
             len_val = 0;
-        
+
         len = len_name + len_val;
         len += len_name > 127 ? 4 : 1;
         len += len_val > 127 ? 4 : 1;
-        
+
         if ((offset_out + len + 16) > FCGI_SIZE_BUF)
         {
             send_par(0);
@@ -290,7 +290,7 @@ public://===============================================================
                 return;
             }
         }
-        
+
         char *p = fcgi_buf + SIZE_HEADER + offset_out;
         if (len_name < 0x80)
             *p++ = (unsigned char)len_name;
@@ -301,7 +301,7 @@ public://===============================================================
             *p++ = (unsigned char)(len_name >> 8);
             *p++ = (unsigned char)len_name;
         }
-    
+
         if (len_val < 0x80)
             *p++ = (unsigned char)len_val;
         else
@@ -311,21 +311,21 @@ public://===============================================================
             *p++ = (unsigned char)(len_val >> 8);
             *p++ = (unsigned char)len_val;
         }
-        
+
         memcpy(p, name, len_name);
         if (len_val > 0)
             memcpy(p + len_name, val, len_val);
-        
+
         offset_out += len;
     }
     //==================================================================
-    int FCGI_client::fcgi_stdout(char **p) // *** FCGI_STDOUT ***  
+    int FCGI_client::fcgi_stdout(char **p) // *** FCGI_STDOUT ***
     {
         char padd[256];
         *p = fcgi_buf;
         if (err)
             return -1;
-        
+
         while (1)
         {
             if (header.len == 0)
@@ -339,14 +339,14 @@ public://===============================================================
                     return -1;
                 }
             }
-        
+
             if (header.type == FCGI_STDOUT)
             {
                 if (header.len == 0)
                 {
                     continue;
                 }
-            
+
                 int rd = (header.len <= (FCGI_SIZE_BUF - 1)) ? header.len : (FCGI_SIZE_BUF - 1);
                 int n = fcgi_read(fcgi_buf, rd);
                 if (n <= 0)
@@ -354,10 +354,10 @@ public://===============================================================
                     fprintf(stderr, "! Error: fcgi_read FCGI_STDOUT\n");
                     return -1;
                 }
-            
+
                 header.len -= n;
                 fcgi_buf[n] = 0;
-                
+
                 return n;
             }
             else if (header.type == FCGI_END_REQUEST)
@@ -367,7 +367,7 @@ public://===============================================================
                 {
                     header.len -= n;
                 }
-                
+
                 if (header.paddingLen > 0)
                     fcgi_read(padd, header.paddingLen);
                 return 0;
@@ -400,7 +400,7 @@ public://===============================================================
     {
         if (err)
             return err;
-        
+
         if (!p)
         {
             fcgi_set_header(fcgi_buf, FCGI_STDIN, 0);
@@ -418,14 +418,14 @@ public://===============================================================
 
             memcpy(fcgi_buf + SIZE_HEADER, p, wr);
             offset_out += wr;
-            
+
             fcgi_set_header(fcgi_buf, FCGI_STDIN, wr);
             fcgi_send();
 
             p += wr;
             len -= wr;
         }
-        
+
         return err;
     }
 

@@ -41,8 +41,8 @@
 
 #include "string__.h"
 
-#define    LINUX_ 
-//#define    FREEBSD_ 
+#define    LINUX_
+//#define    FREEBSD_
 #define    SEND_FILE_
 #define    TCP_CORK_
 
@@ -68,7 +68,7 @@ enum {
 };
 enum {
     M_GET = 1, M_HEAD, M_POST, M_OPTIONS, M_PUT,
-    M_PATCH, M_DELETE, M_TRACE, M_CONNECT   
+    M_PATCH, M_DELETE, M_TRACE, M_CONNECT
 };
 enum { HTTP09 = 1, HTTP10, HTTP11, HTTP2 };
 enum { cgi_ex = 1, php_cgi, php_fpm, fast_cgi, s_cgi };
@@ -103,7 +103,7 @@ struct Config
     int ListenBacklog;
     char tcp_cork;
     char tcp_nodelay;
-    
+
     char SendFile;
     int SndBufSize;
 
@@ -111,7 +111,7 @@ struct Config
 
     int MaxWorkConnections;
     int MaxEventConnections;
-    
+
     unsigned int NumProc;
     unsigned int MaxNumProc;
     unsigned int MaxThreads;

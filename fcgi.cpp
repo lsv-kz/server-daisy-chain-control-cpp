@@ -7,7 +7,7 @@ int get_sock_fcgi(Connect *req, const char *script)
 {
     int fcgi_sock = -1, len;
     fcgi_list_addr *ps = conf->fcgi_list;
-    
+
     if (!script)
     {
         print_err(req, "<%s:%d> Not found\n", __func__, __LINE__);
@@ -20,7 +20,7 @@ int get_sock_fcgi(Connect *req, const char *script)
         print_err(req, "<%s:%d> Error len name script\n", __func__, __LINE__);
         return -RS400;
     }
-    
+
     for (; ps; ps = ps->next)
     {
         if (!strcmp(script, ps->script_name.c_str()))
@@ -63,16 +63,16 @@ int fcgi_read_headers(char *s, int len, String *hdrs, int *stat)
         {
             int n = end_ptr - start_ptr + 1;
             i -= n;
-            
+
             if ((n > 1) && (*(end_ptr - 1) == '\r'))
                 n -= 2;
             else if (n == 1)
                 --n;
-            
+
             if (n == 0)
                 break;
-            
-            if(!strncmp("Status", start_ptr, 6))
+
+            if (!strncmp("Status", start_ptr, 6))
             {
                 *(start_ptr + n) = 0;
                 *stat = atoi(start_ptr + 7);
@@ -96,7 +96,7 @@ int fcgi_read_headers(char *s, int len, String *hdrs, int *stat)
 //======================================================================
 int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
 {
-    if(req->reqMethod == M_POST)
+    if (req->reqMethod == M_POST)
     {
         if (req->tail)
         {
@@ -105,7 +105,7 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
             {
                 return -RS502;
             }
-            
+
             req->req_hd.reqContentLength -= req->lenTail;
         }
 
@@ -119,13 +119,13 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
                 print_err(req, "<%s:%d> Error: reaf_from_client()\n", __func__, __LINE__);
                 return ret;
             }
-            
+
             int err = Fcgi.fcgi_stdin(buf, ret);
             if (err)
             {
                 return -RS502;
             }
-            
+
             req->req_hd.reqContentLength -= ret;
         }
     }
@@ -143,7 +143,7 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
         printf("<%s:%d> Error create String object\n", __func__, __LINE__);
         return -500;
     }
-    
+
     int chunk_mode;
     if (req->reqMethod == M_HEAD)
         chunk_mode = NO_SEND;
@@ -151,15 +151,15 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
         chunk_mode = ((req->httpProt == HTTP11) && req->connKeepAlive) ? SEND_CHUNK : SEND_NO_CHUNK;
 
     ClChunked chunk(req, chunk_mode);
-    
+
     if (chunk_mode == SEND_CHUNK)
         hdrs << "Transfer-Encoding: chunked\r\n";
-    
+
     req->respStatus = RS200;
-    
+
     char *p;
     int empty_line = 0;
-    
+
     while (1)
     {
         int n = Fcgi.fcgi_stdout(&p);
@@ -170,7 +170,7 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
         }
         else if (n == 0)
             break;
-        
+
         *(p + n) = 0;
         if (!empty_line)
         {
@@ -196,7 +196,7 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
         else
             chunk.add_arr(p, n);
     }
-    
+
     int ret = chunk.end();
     req->respContentLength = chunk.len_entity();
     if (ret < 0)
@@ -204,7 +204,7 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
         print_err(req, "<%s:%d> Error chunk.end(): %d\n", __func__, __LINE__, ret);
         return -1;
     }
-    
+
     if (chunk_mode == NO_SEND)
     {
         if (send_response_headers(req, &hdrs))
@@ -226,7 +226,7 @@ int fcgi_send_param(Connect *req, int fcgi_sock)
         Fcgi.add("REDIRECT_STATUS", "true");
     Fcgi.add("PATH", "/bin:/usr/bin:/usr/local/bin");
     Fcgi.add("SERVER_SOFTWARE", conf->ServerSoftware.c_str());
-    Fcgi.add("GATEWAY_INTERFACE", "CGI/1.1"); 
+    Fcgi.add("GATEWAY_INTERFACE", "CGI/1.1");
     Fcgi.add("DOCUMENT_ROOT", conf->DocumentRoot.c_str());
     Fcgi.add("REMOTE_ADDR", req->remoteAddr);
     Fcgi.add("REMOTE_PORT", req->remotePort);
@@ -236,20 +236,20 @@ int fcgi_send_param(Connect *req, int fcgi_sock)
         Fcgi.add("REQUEST_METHOD", get_str_method(M_GET));
     else
         Fcgi.add("REQUEST_METHOD", get_str_method(req->reqMethod));
-    
+
     Fcgi.add("SERVER_PROTOCOL", get_str_http_prot(req->httpProt));
-    
-    if(req->req_hd.iHost >= 0)
+
+    if (req->req_hd.iHost >= 0)
         Fcgi.add("HTTP_HOST", req->reqHdValue[req->req_hd.iHost]);
-    
-    if(req->req_hd.iReferer >= 0)
+
+    if (req->req_hd.iReferer >= 0)
         Fcgi.add("HTTP_REFERER", req->reqHdValue[req->req_hd.iReferer]);
-    
-    if(req->req_hd.iUserAgent >= 0)
+
+    if (req->req_hd.iUserAgent >= 0)
         Fcgi.add("HTTP_USER_AGENT", req->reqHdValue[req->req_hd.iUserAgent]);
 
     Fcgi.add("SCRIPT_NAME", req->decodeUri);
-    
+
     if (req->scriptType == php_fpm)
     {
         String s;
@@ -257,31 +257,31 @@ int fcgi_send_param(Connect *req, int fcgi_sock)
         Fcgi.add("SCRIPT_FILENAME", s.c_str());
     }
 
-    if(req->reqMethod == M_POST)
+    if (req->reqMethod == M_POST)
     {
-        if(req->req_hd.iReqContentType >= 0)
+        if (req->req_hd.iReqContentType >= 0)
         {
             Fcgi.add("CONTENT_TYPE", req->reqHdValue[req->req_hd.iReqContentType]);
             //print_err(req, "<%s:%d> %s\n", __func__, __LINE__, req->reqHdValue[req->req_hd.iReqContentType]);
         }
-        
-        if(req->req_hd.iReqContentLength >= 0)
+
+        if (req->req_hd.iReqContentLength >= 0)
         {
             Fcgi.add("CONTENT_LENGTH", req->reqHdValue[req->req_hd.iReqContentLength]);
         }
     }
-    
+
     Fcgi.add("QUERY_STRING", req->sReqParam);
-    
+
     Fcgi.add(NULL, 0); // End FCGI_PARAMS
     if (Fcgi.error())
     {
         print_err(req, "<%s:%d> Error send_param()\n", __func__, __LINE__);
         return -RS500;
     }
-    
+
     int ret = fcgi_(req, fcgi_sock, Fcgi);
-    
+
     return ret;
 }
 //======================================================================
@@ -317,12 +317,12 @@ int fcgi(Connect *req)
             return -1;
         }
     }
-    
+
     if (timedwait_close_cgi())
     {
         return -1;
     }
-    
+
     if (req->scriptType == php_fpm)
     {
         sock_fcgi = create_fcgi_socket(conf->PathPHP.c_str());
@@ -337,7 +337,7 @@ int fcgi(Connect *req)
         ret = -RS500;
         goto err_exit;
     }
-    
+
     if (sock_fcgi <= 0)
     {
         print_err(req, "<%s:%d> Error connect to fcgi\n", __func__, __LINE__);
@@ -347,11 +347,11 @@ int fcgi(Connect *req)
             ret = -RS502;
         goto err_exit;
     }
-    
+
     ret = fcgi_send_param(req, sock_fcgi);
-    
+
     close(sock_fcgi);
-    
+
 err_exit:
     cgi_dec();
     if (ret < 0)

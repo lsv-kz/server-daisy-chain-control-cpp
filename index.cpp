@@ -85,7 +85,7 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
 
     hdrs << "Content-Type: text/html\r\n";
     req->respContentLength = -1;
-    
+
     if (chunk)
     {
         if (send_response_headers(req, &hdrs))
@@ -134,7 +134,7 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
         path.resize(len_path);
         if ((n == -1) || !S_ISDIR (st.st_mode))
             continue;
-        
+
         if (!encode(list[i], buf, sizeof(buf)))
         {
             print_err(req, "<%s:%d> Error: encode()\n", __func__, __LINE__);
@@ -183,9 +183,9 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
             chunk_buf << "   <tr><td><audio preload=\"none\" controls src=\"" << buf << "\"></audio><a href=\""
                       << buf << "\">" << list[i] << "</a></td><td align=\"right\">" << size << " bytes</td></tr>\r\n";
         else
-            chunk_buf << "   <tr><td><a href=\"" << buf << "\">" << list[i] << "</a></td><td align=\"right\">" 
+            chunk_buf << "   <tr><td><a href=\"" << buf << "\">" << list[i] << "</a></td><td align=\"right\">"
                       << size << " bytes</td></tr>\r\n";
-        
+
         if (chunk_buf.error())
         {
             print_err(req, "<%s:%d>   Error chunk\n", __func__, __LINE__);
@@ -223,7 +223,7 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
         print_err(req, "<%s:%d>   Error chunk_buf.end(): %d\n", __func__, __LINE__, n);
         return -1;
     }
-    
+
     if (chunk == NO_SEND)
     {
         if (send_response_headers(req, &hdrs))
@@ -247,7 +247,7 @@ int index_dir(Connect *req, string& path)
     int ret;
 
     path += '/';
-    
+
     dir = opendir(path.c_str());
     if (dir == NULL)
     {
@@ -259,21 +259,21 @@ int index_dir(Connect *req, string& path)
             return -RS500;
         }
     }
-    
+
     while ((dirbuf = readdir(dir)))
-    {        
+    {
         if (numFiles >= maxNumFiles )
         {
             print_err(req, "<%s:%d> number of files per directory >= %d\n", __func__, __LINE__, numFiles);
             break;
         }
-        
+
         if (dirbuf->d_name[0] == '.')
             continue;
         list[numFiles] = dirbuf->d_name;
         ++numFiles;
     }
-    
+
     qsort(list, numFiles, sizeof(char *), cmp);
     ret = index_chunked(req, list, numFiles, path);
 

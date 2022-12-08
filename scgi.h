@@ -13,10 +13,10 @@ const int DATA_OFFSET = 10;
 class SCGI_client
 {
     int err = 0;
-    
+
     char *scgi_buf;
     int size_buf;
-    
+
     int offset_out, all_send;
     int scgi_sock;
     int TimeoutCGI;
@@ -75,7 +75,7 @@ public://===============================================================
             err = 1;
             return;
         }
-        
+
         if (val)
         {
             int len_val = strlen(val);
@@ -122,7 +122,7 @@ public://===============================================================
             *(scgi_buf + offset_out) = 0;
             offset_out++;
         }
-        
+
         if (val)
         {
             int len_val = strlen(val);
@@ -131,7 +131,7 @@ public://===============================================================
                 err = 1;
                 return;
             }
-            
+
             memcpy(scgi_buf + offset_out, val, len);
             offset_out += len;
             *(scgi_buf + offset_out) = 0;
@@ -190,7 +190,7 @@ public://===============================================================
                 ret = -1;
                 break;
             }
-            
+
             if (fdwr.revents != POLLOUT)
             {
                 err = 1;
@@ -211,7 +211,7 @@ public://===============================================================
             size -= ret;
             p += ret;
         }
-        
+
         if (ret <= 0)
         {
             err = 1;
@@ -223,7 +223,7 @@ public://===============================================================
             ret = all_send;
         }
         offset_out = 0;
-        
+
         return ret;
     }
     //==================================================================
@@ -232,10 +232,10 @@ public://===============================================================
         int read_bytes = 0;
         struct pollfd fdrd;
         char *p = buf;
-        
+
         fdrd.fd = scgi_sock;
         fdrd.events = POLLIN;
-        
+
         while (size > 0)
         {
             int ret = poll(&fdrd, 1, TimeoutCGI * 1000);
@@ -251,7 +251,7 @@ public://===============================================================
                 err = 1;
                 return -1;
             }
-            
+
             if (fdrd.revents & POLLIN)
             {
                 ret = read(scgi_sock, p, size);

@@ -119,7 +119,7 @@ int Connect::find_empty_line()
                     tail = pLF + 1;
                     lenTail -= i;
                 }
-                else 
+                else
                     tail = NULL;
                 return 1;
             }
@@ -162,7 +162,7 @@ int Connect::find_empty_line()
 
                 r[i].len = r[i].end - r[i].start + 1;
                 r[n].len = 0;
-                
+
                 if (((nRanges) > n) && (r[nRanges].len > 0))
                 {
                     r[n].start = r[nRanges].start;
@@ -203,7 +203,7 @@ void ArrayRanges::check_ranges()
             }
         }
     }
-    
+
     for (int i = 0, j = 0; j < num; j++)
     {
         if (r[j].len)
@@ -215,7 +215,7 @@ void ArrayRanges::check_ranges()
                 r[i].len = r[j].len;
                 r[j].len = 0;
             }
-            
+
             i++;
         }
     }

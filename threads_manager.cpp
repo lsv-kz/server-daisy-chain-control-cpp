@@ -184,7 +184,7 @@ void end_response(Connect *req)
     else
     { // ----- KeepAlive -----
     #ifdef TCP_CORK_
-        if (conf->tcp_cork == 'y')
+        if (conf->TcpCork == 'y')
         {
         #if defined(LINUX_)
             int optval = 0;
@@ -369,9 +369,6 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
 
     while (1)
     {
-        struct sockaddr_storage clientAddr;
-        socklen_t addrSize = sizeof(struct sockaddr_storage);
-
         if ((0x7f & status) == CONNECT_ALLOW)
         {
             if (is_maxconn())
@@ -425,7 +422,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
         {
             --ret_poll;
 
-            int clientSocket = accept(sockServer, (struct sockaddr *)&clientAddr, &addrSize);
+            int clientSocket = accept(sockServer, NULL, NULL);
             if (clientSocket == -1)
             {
                 if ((errno == EAGAIN) || (errno == EINTR) || (errno == EMFILE))
@@ -451,15 +448,6 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             req->numReq = 1;
             req->clientSocket = clientSocket;
             req->timeout = conf->Timeout;
-            n = getnameinfo((struct sockaddr *)&clientAddr,
-                    addrSize,
-                    req->remoteAddr,
-                    sizeof(req->remoteAddr),
-                    req->remotePort,
-                    sizeof(req->remotePort),
-                    NI_NUMERICHOST | NI_NUMERICSERV);
-            if (n != 0)
-                print_err(req, "<%s> Error getnameinfo()=%d: %s\n", __func__, n, gai_strerror(n));
 
             start_conn();
             push_pollin_list(req);
@@ -504,7 +492,7 @@ Connect *create_req(void)
 {
     Connect *req = new(nothrow) Connect;
     if (!req)
-        print_err("<%s:%d> Error malloc(): %s\n", __func__, __LINE__, str_err(errno));
+        print_err("<%s:%d> Error malloc(): %s\n", __func__, __LINE__, strerror(errno));
     return req;
 }
 //======================================================================

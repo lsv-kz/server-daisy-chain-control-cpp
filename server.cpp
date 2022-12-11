@@ -5,12 +5,14 @@ using namespace std;
 static int sockServer;
 int Connect::serverSocket;
 
-int create_server_socket(const Config *c);
 int read_conf_file(const char *path_conf);
+int create_server_socket(const Config *c);
+int get_sock_buf(int domain, int optname, int type, int protocol);
 void free_fcgi_list();
-int set_uid();
+
 pid_t create_child(int, unsigned int, int *, int, char);
 static int main_proc();
+int set_uid();
 
 static string pidFile;
 static string conf_path;
@@ -92,10 +94,22 @@ void print_limits()
 {
     struct rlimit lim;
     if (getrlimit(RLIMIT_NOFILE, &lim) == -1)
-        cout << " Error getrlimit(RLIMIT_NOFILE): " << strerror(errno) << "\n";
+        cerr << " Error getrlimit(RLIMIT_NOFILE): " << strerror(errno) << "\n";
     else
         cout << " RLIMIT_NOFILE: cur=" << (long)lim.rlim_cur << ", max=" << (long)lim.rlim_max << "\n";
     cout << " hardware_concurrency(): " << thread::hardware_concurrency() << "\n\n";
+
+    int sndbuf = get_sock_buf(AF_INET, SO_SNDBUF, SOCK_STREAM, 0);
+    if (sndbuf < 0)
+        cerr << " Error get_sock_buf(AF_INET, SO_SNDBUF, SOCK_STREAM, 0): " << strerror(-sndbuf) << "\n";
+    else
+        cout << " AF_INET: SO_SNDBUF=" << sndbuf << "\n";
+
+    sndbuf = get_sock_buf(AF_INET, SO_RCVBUF, SOCK_STREAM, 0);
+    if (sndbuf < 0)
+        cerr << " Error get_sock_buf(AF_INET, SO_RCVBUF, SOCK_STREAM, 0): " << strerror(-sndbuf) << "\n\n";
+    else
+        cout << " AF_INET: SO_RCVBUF=" << sndbuf << "\n\n";
 }
 //======================================================================
 void print_config()
@@ -106,11 +120,11 @@ void print_config()
          << "\n\n   ServerAddr             : " << conf->ServerAddr.c_str()
          << "\n   ServerPort             : " << conf->ServerPort.c_str()
          << "\n\n   ListenBacklog          : " << conf->ListenBacklog
-         << "\n   tcp_cork               : " << conf->tcp_cork
-         << "\n   tcp_nodelay            : " << conf->tcp_nodelay
+         << "\n   TcpCork                : " << conf->TcpCork
+         << "\n   TcpNoDelay             : " << conf->TcpNoDelay
 
-         << "\n\n   SndBufSize             : " << conf->SndBufSize
-         << "\n   SendFile               : " << conf->SendFile
+         << "\n\n   SendFile               : " << conf->SendFile
+         << "\n   SndBufSize             : " << conf->SndBufSize
 
          << "\n\n   NumCpuCores            : " << conf->NumCpuCores
          << "\n   MaxWorkConnections     : " << conf->MaxWorkConnections

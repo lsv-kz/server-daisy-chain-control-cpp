@@ -343,9 +343,7 @@ public://===============================================================
             if (header.type == FCGI_STDOUT)
             {
                 if (header.len == 0)
-                {
                     continue;
-                }
 
                 int rd = (header.len <= (FCGI_SIZE_BUF - 1)) ? header.len : (FCGI_SIZE_BUF - 1);
                 int n = fcgi_read(fcgi_buf, rd);

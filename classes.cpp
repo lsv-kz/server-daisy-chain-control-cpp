@@ -74,16 +74,18 @@ int Connect::find_empty_line()
     {
         int i = 0, len_line = 0;
         pCR = pLF = NULL;
-        while (i < lenTail) // loop to find end of line
+        while (i < lenTail)
         {
             ch = *(p_newline + i);
-            if (ch == '\r')
+            if (ch == '\r')// found CR
             {
                 if (i == (lenTail - 1))
                     return 0;
+                if (pCR)
+                    return -RS400;
                 pCR = p_newline + i;
             }
-            else if (ch == '\n')
+            else if (ch == '\n')// found LF
             {
                 pLF = p_newline + i;
                 if ((pCR) && ((pLF - pCR) != 1))
@@ -135,7 +137,9 @@ int Connect::find_empty_line()
             lenTail -= i;
             p_newline = pLF + 1;
         }
-        else // not found end of line '\n'
+        else if (pCR && (!pLF))
+            return -RS400;
+        else
             break;
     }
 

@@ -154,7 +154,6 @@ int get_int_http_prot(const char *s)
 //======================================================================
 const char *get_str_http_prot(int i)
 {
-
     if (i == HTTP11)
         return "HTTP/1.1";
     else if (i == HTTP10)
@@ -271,7 +270,7 @@ const char *istextfile(const char *path)
 
     const char *s = istextfile_(f);
     fclose(f);
-//print_err("<%s:%d> %s [%s]\n", __func__, __LINE__, path, s);
+
     return s;
 }
 //======================================================================
@@ -367,7 +366,7 @@ const char *ismediafile(const char *path)
 
     const char *s = ismediafile_(f);
     fclose(f);
-//print_err("<%s:%d> %s [%s]\n", __func__, __LINE__, path, s);
+
     return s;
 }
 //======================================================================
@@ -678,124 +677,4 @@ int parse_headers(Connect *req, char *pName, int i)
     req->reqHdValue[i] = pVal;
 
     return 0;
-}
-//======================================================================
-const char *str_err(int i)
-{
-    switch(i)
-    {
-        case 0:
-            return "Success";
-        case EPERM:
-            return "Operation not permitted";
-        case ENOENT:
-            return "No such file or directory";
-        case EINTR:
-            return "Interrupted system call";
-        case EIO:
-            return "I/O error";
-        case ENXIO:
-            return "No such device or address";
-        case E2BIG:
-            return "Argument list too long";
-        case ENOEXEC:
-            return "Exec format error";
-        case EBADF:
-            return "Bad file number";
-        case ECHILD:
-            return "No child processes";
-        case EAGAIN:
-            return "Try again";
-        case ENOMEM:
-            return "Out of memory";
-        case EACCES:
-            return "Permission denied";
-        case EFAULT:
-            return "Bad address";
-        case ENOTBLK:
-            return "Block device required";
-        case EBUSY:
-            return "Device or resource busy";
-        case EEXIST:
-            return "File exists";
-        case EXDEV:
-            return "Cross-device link";
-        case ENODEV:
-            return "No such device";
-        case ENOTDIR:
-            return "Not a directory";
-        case EISDIR:
-            return "Is a directory";
-        case EINVAL:
-            return "Invalid argument";
-        case ENFILE:
-            return "File table overflow";
-        case EMFILE:
-            return "Too many open files";
-        case ENOTTY:
-            return "Not a typewriter";
-        case ETXTBSY:
-            return "Text file busy";
-        case EFBIG:
-            return "File too large";
-        case ENOSPC:
-            return "No space left on device";
-        case ESPIPE:
-            return "Illegal seek";
-        case EROFS:
-            return "Read-only file system";
-        case EMLINK:
-            return "Too many links";
-        case EPIPE:
-            return "Broken pipe";
-        case ENAMETOOLONG:
-            return "File name too long";
-        case ECONNABORTED:
-            return "Software caused connection abort";
-        case EILSEQ:
-            return "Illegal byte sequence";
-        case ENOTSOCK:
-            return "Socket operation on non-socket";
-        case EDESTADDRREQ:
-            return "Destination address required";
-        case EMSGSIZE:
-            return "Message too long";
-        case EPROTOTYPE:
-            return "Protocol wrong type for socket";
-        case ENOPROTOOPT:
-            return "Protocol not available";
-        case EPROTONOSUPPORT:
-            return "Protocol not supported";
-        case ESOCKTNOSUPPORT:
-            return "Socket type not supported";
-        case EOPNOTSUPP:
-            return "Operation not supported on transport endpoint";
-        case EPFNOSUPPORT:
-            return "Protocol family not supported";
-        case EAFNOSUPPORT:
-            return "Address family not supported by protocol";
-        case EADDRINUSE:
-            return "Address already in use";
-        case EADDRNOTAVAIL:
-            return "Cannot assign requested address";
-        case ENETDOWN:
-            return "Network is down";
-        case ENETUNREACH:
-            return "Network is unreachable";
-        case ECONNRESET:
-            return "Connection reset by peer";
-        case ENOBUFS:
-            return "No buffer space available";
-        case ENOTCONN:
-            return "Transport endpoint is not connected";
-        case ETIMEDOUT:
-            return "Connection timed out";
-        case ECONNREFUSED:
-            return "Connection refused";
-        case EINPROGRESS:
-            return "Operation now in progress";
-        default:
-            return "?";
-    }
-    return "";
 }

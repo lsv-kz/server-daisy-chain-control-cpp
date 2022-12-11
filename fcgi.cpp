@@ -140,7 +140,7 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
     String hdrs(256);
     if (hdrs.error())
     {
-        printf("<%s:%d> Error create String object\n", __func__, __LINE__);
+        fprintf(stderr, "<%s:%d> Error create String object\n", __func__, __LINE__);
         return -500;
     }
 
@@ -165,7 +165,7 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
         int n = Fcgi.fcgi_stdout(&p);
         if (n < 0)
         {
-            printf("<%s:%d> Error Fcgi.read_from_server()\n", __func__, __LINE__);
+            fprintf(stderr, "<%s:%d> Error Fcgi.read_from_server()\n", __func__, __LINE__);
             return -1;
         }
         else if (n == 0)

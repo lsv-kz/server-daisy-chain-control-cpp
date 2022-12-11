@@ -260,7 +260,7 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
     pid_t pid = fork();
     if (pid < 0)
     {
-        print_err(req, "<%s:%d> Error fork(): %s\n", __func__, __LINE__, str_err(errno));
+        print_err(req, "<%s:%d> Error fork(): %s\n", __func__, __LINE__, strerror(errno));
         close(serv_cgi[0]);
         close(serv_cgi[1]);
         close(cgi_serv[1]);

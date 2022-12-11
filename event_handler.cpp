@@ -294,18 +294,6 @@ void event_handler(RequestManager *ReqMan)
     size_buf = conf->SndBufSize;
     snd_buf = NULL;
 
-    if (conf->MaxEventConnections <= 0)
-    {
-        print_err("[%d]<%s:%d> Error: MaxEventConnections=%d\n", num_chld, __func__, __LINE__, conf->MaxEventConnections);
-        exit(1);
-    }
-
-    if (conf->SndBufSize <= 0)
-    {
-        print_err("[%d]<%s:%d> Error: SndBufSize=%d\n", num_chld, __func__, __LINE__, conf->SndBufSize);
-        exit(1);
-    }
-
 #if defined(SEND_FILE_) && (defined(LINUX_) || defined(FREEBSD_))
     if (conf->SendFile != 'y')
 #endif

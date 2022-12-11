@@ -52,8 +52,8 @@ void create_conf_file(const char *path)
     fprintf(f, "ServerPort  8080\n\n");
 
     fprintf(f, "ListenBacklog  128\n");
-    fprintf(f, "tcp_cork  n # y/n \n");
-    fprintf(f, "tcp_nodelay  y \n\n");
+    fprintf(f, "TcpCork  n # y/n \n");
+    fprintf(f, "TcpNoDelay  y \n\n");
 
     fprintf(f, "DocumentRoot  www/html\n");
     fprintf(f, "ScriptPath  www/cgi-bin\n");
@@ -293,10 +293,10 @@ int read_conf_file(FILE *fconf)
                 s2 >> c.ServerPort;
             else if (s1 == "ServerSoftware")
                 s2 >> c.ServerSoftware;
-            else if ((s1 == "tcp_cork") && is_bool(s2.c_str()))
-                c.tcp_cork = (char)tolower(s2[0]);
-            else if ((s1 == "tcp_nodelay") && is_bool(s2.c_str()))
-                c.tcp_nodelay = (char)tolower(s2[0]);
+            else if ((s1 == "TcpCork") && is_bool(s2.c_str()))
+                c.TcpCork = (char)tolower(s2[0]);
+            else if ((s1 == "TcpNoDelay") && is_bool(s2.c_str()))
+                c.TcpNoDelay = (char)tolower(s2[0]);
             else if ((s1 == "ListenBacklog") && is_number(s2.c_str()))
                 s2 >> c.ListenBacklog;
             else if ((s1 == "SendFile") && is_bool(s2.c_str()))
@@ -478,6 +478,18 @@ int read_conf_file(FILE *fconf)
     {
         c.ScriptPath = "";
         fprintf(stderr, "!!! Error ScriptPath [%s]\n", c.ScriptPath.c_str());
+    }
+    //------------------------------------------------------------------
+    if (conf->MaxEventConnections <= 0)
+    {
+        print_err("<%s:%d> Error: MaxEventConnections=%d\n", __func__, __LINE__, conf->MaxEventConnections);
+        exit(1);
+    }
+
+    if (conf->SndBufSize <= 0)
+    {
+        print_err("<%s:%d> Error: SndBufSize=%d\n", __func__, __LINE__, conf->SndBufSize);
+        exit(1);
     }
     //------------------------------------------------------------------
     if (c.MinThreads < 1)

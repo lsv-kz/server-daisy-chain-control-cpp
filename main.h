@@ -101,8 +101,8 @@ struct Config
     std::string PathPHP;
 
     int ListenBacklog;
-    char tcp_cork;
-    char tcp_nodelay;
+    char TcpCork;
+    char TcpNoDelay;
 
     char SendFile;
     int SndBufSize;
@@ -323,7 +323,6 @@ const char *content_type(const char *s);
 const char *base_name(const char *path);
 int parse_startline_request(Connect *req, char *s);
 int parse_headers(Connect *req, char *s, int n);
-const char *str_err(int i);
 //----------------------------------------------------------------------
 void create_logfiles(const std::string &);
 void close_logs(void);

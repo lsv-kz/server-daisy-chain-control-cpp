@@ -39,7 +39,7 @@ void response1(RequestManager *ReqMan)
             }
         }
     #ifdef TCP_CORK_
-        if (conf->tcp_cork == 'y')
+        if (conf->TcpCork == 'y')
         {
         #if defined(LINUX_)
             int optval = 1;

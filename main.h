@@ -285,7 +285,9 @@ int index_dir(Connect *req, std::string& path);
 int cgi(Connect *req);
 int fcgi(Connect *req);
 int scgi(Connect *req);
+//----------------------------------------------------------------------
 int create_fcgi_socket(const char *host);
+void get_nameinfo(Connect *req);
 //----------------------------------------------------------------------
 int encode(const char *s_in, char *s_out, int len_out);
 int decode(const char *s_in, int len_in, char *s_out, int len);

@@ -22,6 +22,9 @@ void response1(RequestManager *ReqMan)
             return;
         }
         //--------------------------------------------------------------
+        if (req->numReq == 1)
+            get_nameinfo(req);
+        //--------------------------------------------------------------
         int ret = parse_startline_request(req, req->reqHdName[0]);
         if (ret)
         {

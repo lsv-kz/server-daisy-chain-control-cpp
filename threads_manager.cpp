@@ -226,7 +226,6 @@ void thr_create_manager(int numProc, RequestManager *ReqMan)
 
         ReqMan->start_thr();
     }
-    //print_err("[%d] <%s:%d> *** Exit thread_req_manager() ***\n", numProc, __func__, __LINE__);
 }
 //======================================================================
 static unsigned int nProc;
@@ -446,6 +445,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             req->numProc = numProc;
             req->numConn = ++allConn;
             req->numReq = 1;
+            req->serverSocket = sockServer;
             req->clientSocket = clientSocket;
             req->timeout = conf->Timeout;
 

@@ -79,24 +79,6 @@ mtxLog.unlock();
 void print_log(Connect *req)
 {
     String ss(320);
-    if (req->numReq == 1)
-    {
-        req->remoteAddr[0] = 0;
-        struct sockaddr_storage clientAddr;
-        socklen_t addrSize = sizeof(struct sockaddr_storage);
-    
-        if (getpeername(req->clientSocket,(struct sockaddr *)&clientAddr, &addrSize))
-            fprintf(stderr, "%u/%u/%u Error getpeername(): %s\n", req->numProc, req->numConn, req->numReq, strerror(errno));
-        else
-            getnameinfo((struct sockaddr *)&clientAddr,
-                addrSize,
-                req->remoteAddr,
-                sizeof(req->remoteAddr),
-                req->remotePort,
-                sizeof(req->remotePort),
-                NI_NUMERICHOST | NI_NUMERICSERV);
-    }
-
     if (req->reqMethod <= 0)
     {
         ss  << req->numProc << "/" << req->numConn << "/" << req->numReq << " - " << req->remoteAddr

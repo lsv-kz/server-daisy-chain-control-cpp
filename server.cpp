@@ -398,8 +398,6 @@ int main_proc()
             print_err("<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
             break;
         }
-        //else
-            //print_err("<%s:%d> status: 0x%x, from proc: %u\n", __func__, __LINE__, (int)status, num_create_proc - 1);
 
         if (status == PROC_CLOSE)
             break;

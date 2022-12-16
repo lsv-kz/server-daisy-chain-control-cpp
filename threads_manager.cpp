@@ -273,9 +273,6 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
     nProc = numProc;
     RM = ReqMan;
     //------------------------------------------------------------------
-    printf("[%u] +++++ num threads=%u, pid=%u, uid=%u, gid=%u +++++\n", numProc,
-                                ReqMan->get_num_thr(), getpid(), getuid(), getgid());
-    //------------------------------------------------------------------
     signal(SIGUSR2, SIG_IGN);
 
     if (signal(SIGINT, signal_handler_child) == SIG_ERR)
@@ -356,6 +353,9 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
         exit(errno);
     }
     //------------------------------------------------------------------
+    printf("[%u] +++++ num threads=%u, pid=%u, uid=%u, gid=%u +++++\n", numProc,
+                                ReqMan->get_num_thr(), getpid(), getuid(), getgid());
+    //------------------------------------------------------------------
     static struct pollfd fdrd[2];
     fdrd[0].fd = fd_in;
     fdrd[0].events = POLLIN;
@@ -364,9 +364,11 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
     fdrd[1].events = POLLIN;
 
     unsigned char status = sig;
-    int num_fd = 1;
+    int num_fd = 1, run = 1;
+    if (write_(fd_out, &status, sizeof(status)) < 0)
+        run = 0;
 
-    while (1)
+    while (run)
     {
         if ((0x7f & status) == CONNECT_ALLOW)
         {

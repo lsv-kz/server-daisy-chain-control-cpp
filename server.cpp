@@ -18,9 +18,7 @@ static string pidFile;
 static string conf_path;
 
 static int pfd[2], pfd_in;
-
 static int start = 0, restart = 1;
-
 static pid_t pid_child;
 //======================================================================
 static void signal_handler(int sig)
@@ -504,11 +502,20 @@ pid_t create_child(int sock, unsigned int num_chld, int *pfd_i, int fd_close, ch
         fprintf(stderr, "<%s:%d> Error fork(): %s\n", __func__, __LINE__, strerror(errno));
         close(pfd[0]);
         pfd[0] = -1;
+        return -1;
     }
 
     close(*pfd_i);
     close(pfd[1]);
     *pfd_i = pfd[0];
+
+    char ch;
+    int ret = read_timeout(pfd[0], &ch, sizeof(ch), 3);
+    if (ret <= 0)
+    {
+        fprintf(stderr, "<%s:%d> Error read()=%d\n", __func__, __LINE__, ret);
+        pid = -1;
+    }
 
     return pid;
 }

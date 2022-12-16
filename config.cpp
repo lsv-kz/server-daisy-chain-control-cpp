@@ -502,14 +502,23 @@ int read_conf_file(FILE *fconf)
     }
     //------------------------------------------------------------------
     //c.NumCpuCores = thread::hardware_concurrency();
+    if (c.NumCpuCores == 0)
+        c.NumCpuCores = 1;
+
+    if ((c.MaxNumProc < 1) || (c.MaxNumProc > 8))
+    {
+        fprintf(stderr, "<%s:%d> Error MaxNumProc = %d; [1 <= MaxNumProc <= 8]\n", __func__, __LINE__, c.MaxNumProc);
+        return -1;
+    }
+
     if (c.NumProc > c.MaxNumProc)
     {
         fprintf(stderr, "<%s:%d> Error: NumProc=%u; MaxNumProc=%u\n", __func__, __LINE__, c.NumProc, c.MaxNumProc);
         return -1;
     }
 
-    if (c.NumProc < c.NumCpuCores)
-        c.NumProc = 4;
+    if ((c.NumCpuCores > 1) && (c.NumProc == 1))
+        c.NumProc = 2;
     //------------------- Setting OPEN_MAX -----------------------------
     if (c.MaxWorkConnections <= 0)
     {
@@ -517,8 +526,8 @@ int read_conf_file(FILE *fconf)
         return -1;
     }
 
-    const int fd_stdio = 3, fd_logs = 2, fd_serv_sock = 1, fd_pipe = 2; // 8
-    long min_open_fd = fd_stdio + fd_logs + fd_serv_sock + fd_pipe;
+    const int fd_stdio = 3, fd_logs = 2, fd_sock = 1, fd_pipe = 2; // 8
+    long min_open_fd = fd_stdio + fd_logs + fd_sock + fd_pipe;
     int max_fd = min_open_fd + c.MaxWorkConnections * 2;
     n = set_max_fd(max_fd);
     if (n == -1)

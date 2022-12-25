@@ -126,7 +126,7 @@ class ClChunked
             len = offset;
         }
 
-        int ret = write_timeout(req->clientSocket, p, len, conf->Timeout);
+        int ret = write_to_client(req, p, len, conf->Timeout);
 
         offset = 0;
         if (ret > 0)
@@ -247,7 +247,7 @@ public://---------------------------------------------------------------
             }
 
             int rd = CHUNK_SIZE_BUF - offset;
-            int ret = read_timeout(fdPipe, buf + MAX_LEN_SIZE_CHUNK + offset, rd, conf->TimeoutCGI);
+            int ret = read_from_pipe(fdPipe, buf + MAX_LEN_SIZE_CHUNK + offset, rd, conf->TimeoutCGI);
             if (ret == 0)
             {
                 break;

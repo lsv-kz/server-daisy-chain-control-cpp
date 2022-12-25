@@ -68,10 +68,10 @@ int scgi_send_param(Connect *req, int scgi_sock)
                 rd = sizeof(buf);
             else
                 rd = (int)req->req_hd.reqContentLength;
-            int ret = read_timeout(req->clientSocket, buf, rd, conf->Timeout);
+            int ret = read_from_client(req, buf, rd, conf->Timeout);
             if (ret <= 0)
             {
-                print_err(req, "<%s:%d> Error read_timeout()\n", __func__, __LINE__);
+                print_err(req, "<%s:%d> Error read_from_client()\n", __func__, __LINE__);
                 return -1;
             }
 
@@ -112,15 +112,7 @@ int scgi(Connect *req)
         if (req->req_hd.reqContentLength > conf->ClientMaxBodySize)
         {
             print_err(req, "<%s:%d> 413 Request entity too large: %lld\n", __func__, __LINE__, req->req_hd.reqContentLength);
-            if (req->req_hd.reqContentLength < 50000000)
-            {
-                if (req->tail)
-                    req->req_hd.reqContentLength -= req->lenTail;
-                client_to_cosmos(req, &req->req_hd.reqContentLength);
-                if (req->req_hd.reqContentLength == 0)
-                    return -RS413;
-            }
-            return -1;
+            return -RS413;
         }
     }
 

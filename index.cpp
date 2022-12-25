@@ -88,8 +88,14 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
 
     if (chunk)
     {
-        if (send_response_headers(req, &hdrs))
+        if (create_response_headers(req, &hdrs))
+            return -1;
+
+        if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
         {
+            print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
+            req->req_hd.iReferer = MAX_HEADERS - 1;
+            req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
             return -1;
         }
     }
@@ -195,7 +201,7 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
     //------------------------------------------------------------------
     chunk_buf << "  </table>\r\n"
               "  <hr>\r\n"
-              "  " << req->sLogTime << "\r\n"
+              "  " << req->sTime << "\r\n"
               "  <a href=\"#top\" style=\"display:block;\r\n"
               "         position:fixed;\r\n"
               "         bottom:30px;\r\n"
@@ -226,9 +232,17 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
 
     if (chunk == NO_SEND)
     {
-        if (send_response_headers(req, &hdrs))
+        if (create_response_headers(req, &hdrs))
         {
             print_err("<%s:%d> Error send_header_response()\n", __func__, __LINE__);
+            return -1;
+        }
+
+        if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
+        {
+            print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
+            req->req_hd.iReferer = MAX_HEADERS - 1;
+            req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
             return -1;
         }
     }

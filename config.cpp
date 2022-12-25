@@ -505,7 +505,7 @@ int read_conf_file(FILE *fconf)
     if (c.NumCpuCores == 0)
         c.NumCpuCores = 1;
 
-    if ((c.MaxNumProc < 1) || (c.MaxNumProc > 8))
+    if ((c.MaxNumProc < 1) || (c.MaxNumProc > PROC_LIMIT))
     {
         fprintf(stderr, "<%s:%d> Error MaxNumProc = %d; [1 <= MaxNumProc <= 8]\n", __func__, __LINE__, c.MaxNumProc);
         return -1;

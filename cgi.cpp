@@ -87,17 +87,18 @@ int cgi_chunk(Connect *req, String *hdrs, int cgi_serv_in, char *tail_ptr, int t
     //------------ read from script -------------
     if (req->reqMethod == M_HEAD)
     {
-        int n = cgi_to_cosmos(cgi_serv_in, conf->TimeoutCGI);
-        if (n < 0)
+        req->respContentLength = -1;
+        if (create_response_headers(req, hdrs))
         {
             print_err("<%s:%d> Error send_header_response()\n", __func__, __LINE__);
             return -1;
         }
 
-        req->respContentLength = tail_len + n;
-        if (send_response_headers(req, hdrs))
+        if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
         {
-            print_err("<%s:%d> Error send_header_response()\n", __func__, __LINE__);
+            print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
+            req->req_hd.iReferer = MAX_HEADERS - 1;
+            req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
             return -1;
         }
 
@@ -107,8 +108,16 @@ int cgi_chunk(Connect *req, String *hdrs, int cgi_serv_in, char *tail_ptr, int t
     if (chunk == SEND_CHUNK)
         (*hdrs) << "Transfer-Encoding: chunked\r\n";
 
-    if (send_response_headers(req, hdrs))
+    if (create_response_headers(req, hdrs))
         return -1;
+
+    if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
+    {
+        print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
+        req->req_hd.iReferer = MAX_HEADERS - 1;
+        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
+        return -1;
+    }
     //-------------------------- send entity ---------------------------
     if (tail_len > 0)
     {
@@ -180,7 +189,7 @@ int cgi_read_headers(Connect *req, int cgi_serv_in)
                 break;
             }
 
-            int ret = read_timeout(cgi_serv_in, buf + ReadFromScript, rd, conf->TimeoutCGI);
+            int ret = read_from_pipe(cgi_serv_in, buf + ReadFromScript, rd, conf->TimeoutCGI);
             if (ret <= 0)
             {
                 print_err(req, "<%s:%d> read_from_script()=%d, read_len=%d\n", __func__, __LINE__, ret, rd);
@@ -202,7 +211,8 @@ int cgi_read_headers(Connect *req, int cgi_serv_in)
 
         if (len > 0)
         {
-            if (*(end_ptr - 1) == '\r') --len;
+            if (*(end_ptr - 1) == '\r')
+                --len;
         }
 
         *(str + len) = '\0';
@@ -353,7 +363,7 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
                 "  <hr>\n"
                 "  %s\n"
                 " </body>\n"
-                "</html>", strerror(err_), req->sLogTime.c_str());
+                "</html>", strerror(err_), req->sTime.c_str());
         fclose(stdout);
         exit(EXIT_FAILURE);
     }
@@ -367,7 +377,7 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
         {
             if (req->tail)
             {
-                wr_bytes = write_timeout(serv_cgi[1], req->tail, req->lenTail, conf->TimeoutCGI);
+                wr_bytes = write_to_pipe(serv_cgi[1], req->tail, req->lenTail, conf->TimeoutCGI);
                 if (wr_bytes < 0)
                 {
                     print_err(req, "<%s:%d> Error tail to script: %d\n", __func__, __LINE__, wr_bytes);
@@ -377,7 +387,7 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
                 req->req_hd.reqContentLength -= wr_bytes;
             }
 
-            wr_bytes = client_to_cgi(req->clientSocket, serv_cgi[1], &req->req_hd.reqContentLength);
+            wr_bytes = socket_to_pipe(req, serv_cgi[1], &req->req_hd.reqContentLength);
             if ((wr_bytes <= 0) && (req->req_hd.reqContentLength))
             {
                 print_err(req, "<%s:%d> Error client_to_script() = %d\n", __func__, __LINE__, wr_bytes);

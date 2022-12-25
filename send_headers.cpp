@@ -4,74 +4,66 @@ using namespace std;
 
 const char *status_resp(int st);
 //======================================================================
-int send_response_headers(Connect *req, const String *hdrs)
+int create_response_headers(Connect *req, const String *hdrs)
 {
-    String resp(512);
-    if (resp.error())
+    req->resp.s = "";
+    req->resp.s.reserve(512);
+    if (req->resp.s.error())
     {
         print_err(req, "<%s:%d> Error create String object\n", __func__, __LINE__);
         return -1;
     }
 
-    resp << get_str_http_prot(req->httpProt) << " " << status_resp(req->respStatus) << "\r\n"
-        << "Date: " << req->sLogTime << "\r\n"
+    req->resp.s << get_str_http_prot(req->httpProt) << " " << status_resp(req->respStatus) << "\r\n"
+        << "Date: " << req->sTime << "\r\n"
         << "Server: " << conf->ServerSoftware << "\r\n";
 
     if (req->reqMethod == M_OPTIONS)
-        resp << "Allow: OPTIONS, GET, HEAD, POST\r\n";
+        req->resp.s << "Allow: OPTIONS, GET, HEAD, POST\r\n";
 
     if (req->numPart == 1)
     {
         if (req->respContentType)
-            resp << "Content-Type: " << req->respContentType << "\r\n";
-        resp << "Content-Length: " << req->respContentLength << "\r\n";
+            req->resp.s << "Content-Type: " << req->respContentType << "\r\n";
+        req->resp.s << "Content-Length: " << req->respContentLength << "\r\n";
 
-        resp << "Content-Range: bytes " << req->offset << "-"
+        req->resp.s << "Content-Range: bytes " << req->offset << "-"
                                         << (req->offset + req->respContentLength - 1)
                                         << "/" << req->fileSize << "\r\n";
     }
     else if (req->numPart == 0)
     {
         if (req->respContentType)
-            resp << "Content-Type: " << req->respContentType << "\r\n";
+            req->resp.s << "Content-Type: " << req->respContentType << "\r\n";
         if (req->respContentLength >= 0)
         {
-            resp << "Content-Length: " << req->respContentLength << "\r\n";
+            req->resp.s << "Content-Length: " << req->respContentLength << "\r\n";
             if (req->respStatus == RS200)
-                resp << "Accept-Ranges: bytes\r\n";
+                req->resp.s << "Accept-Ranges: bytes\r\n";
         }
 
         if (req->respStatus == RS416)
-            resp << "Content-Range: bytes */" << req->fileSize << "\r\n";
+            req->resp.s << "Content-Range: bytes */" << req->fileSize << "\r\n";
     }
 
     if (req->respStatus == RS101)
     {
-        resp << "Upgrade: HTTP/1.1\r\n"
+        req->resp.s << "Upgrade: HTTP/1.1\r\n"
             << "Connection: Upgrade\r\n";
     }
     else
-        resp << "Connection: " << (req->connKeepAlive == 0 ? "close" : "keep-alive") << "\r\n";
+        req->resp.s << "Connection: " << (req->connKeepAlive == 0 ? "close" : "keep-alive") << "\r\n";
 
     if (hdrs)
-        resp << hdrs->c_str();
+        req->resp.s << hdrs->c_str();
 
-    resp << "\r\n";
+    req->resp.s << "\r\n";
 
-    if (resp.error())
+    if (req->resp.s.error())
     {
         print_err(req, "<%s:%d> Error create response headers\n", __func__, __LINE__);
         req->req_hd.iReferer = MAX_HEADERS - 1;
         req->reqHdValue[req->req_hd.iReferer] = "Error create response headers";
-        return -1;
-    }
-
-    int n = write_timeout(req->clientSocket, resp.c_str(), resp.size(), conf->Timeout);
-    if (n <= 0)
-    {
-        print_err(req, "<%s:%d> Sent to client response error; (%d)\n", __func__, __LINE__, n);
-        req->req_hd.iReferer = MAX_HEADERS - 1;
-        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
         return -1;
     }
 
@@ -96,7 +88,7 @@ void send_message(Connect *req, const char *msg, const String *hdrs)
                 "<body>\r\n"
                 "<h3>" << title << "</h3>\r\n"
                 "<p>" << (msg ? msg : "") <<  "</p>\r\n"
-                "<hr>\r\n" << req->sLogTime << "\r\n"
+                "<hr>\r\n" << req->sTime << "\r\n"
                 "</body>\r\n"
                 "</html>\r\n";
 
@@ -112,7 +104,7 @@ void send_message(Connect *req, const char *msg, const String *hdrs)
 
     req->connKeepAlive = 0;
 
-    if ((req->httpProt != HTTP09) && send_response_headers(req, hdrs))
+    if ((req->httpProt != HTTP09) && create_response_headers(req, hdrs))
         return;
 
     if ((req->reqMethod == M_HEAD) || (req->respStatus == RS204))
@@ -120,10 +112,12 @@ void send_message(Connect *req, const char *msg, const String *hdrs)
 
     if (req->respContentLength > 0)
     {
-        req->send_bytes = write_timeout(req->clientSocket, html.c_str(), req->respContentLength, conf->Timeout);
+        req->resp.s << html.c_str();
+
+        req->send_bytes = write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout);
         if (req->send_bytes <= 0)
         {
-            print_err(req, "<%s:%d> Error write_timeout()\n", __func__, __LINE__);
+            print_err(req, "<%s:%d> Error write_to_client()\n", __func__, __LINE__);
         }
     }
 }

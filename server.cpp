@@ -15,11 +15,12 @@ static int main_proc();
 int set_uid();
 
 static string pidFile;
-static string conf_path;
+static string confPath;
 
+static pid_t pidChild[PROC_LIMIT];
 static int pfd[2], pfd_in;
-static int start = 0, restart = 1;
-static pid_t pid_child;
+static int startServer = 0, restartServer = 1;
+static unsigned int numCreatedProc;
 //======================================================================
 static void signal_handler(int sig)
 {
@@ -38,8 +39,18 @@ static void signal_handler(int sig)
     else if (sig == SIGTERM)
     {
         print_err("<main> ####### SIGTERM #######\n");
-        shutdown(sockServer, SHUT_RDWR);
-        close(sockServer);
+        for (unsigned int i = 0; i < numCreatedProc; ++i)
+        {
+            if (pidChild[i] > 0)
+                kill(pidChild[i], SIGKILL);
+        }
+
+        pid_t pid;
+        while ((pid = wait(NULL)) != -1)
+        {
+            fprintf(stderr, "<%s> wait() pid: %d\n", __func__, pid);
+        }
+
         exit(0);
     }
     else if (sig == SIGSEGV)
@@ -47,6 +58,18 @@ static void signal_handler(int sig)
         print_err("<main> ####### SIGSEGV #######\n");
         shutdown(sockServer, SHUT_RDWR);
         close(sockServer);
+        for (unsigned int i = 0; i < numCreatedProc; ++i)
+        {
+            if (pidChild[i] > 0)
+                kill(pidChild[i], SIGKILL);
+        }
+
+        pid_t pid;
+        while ((pid = wait(NULL)) != -1)
+        {
+            fprintf(stderr, "<%s> wait() pid: %d\n", __func__, pid);
+        }
+
         exit(1);
     }
     else if (sig == SIGUSR1)
@@ -60,7 +83,7 @@ static void signal_handler(int sig)
             close(sockServer);
             exit(0);
         }
-        restart = 1;
+        restartServer = 1;
     }
     else if (sig == SIGUSR2)
     {
@@ -80,7 +103,7 @@ static void signal_handler(int sig)
 //======================================================================
 void print_help(const char *name)
 {
-    fprintf(stderr, "Usage: %s [-l] [-c configfile] [-s signal]\n"
+    fprintf(stderr, "Usage: %s [-h] [-p] [-c configfile] [-s signal]\n"
                     "Options:\n"
                     "   -h              : help\n"
                     "   -p              : print parameters\n"
@@ -171,18 +194,17 @@ int main(int argc, char *argv[])
     signal(SIGPIPE, SIG_IGN);
 
     if (argc == 1)
-        conf_path = "server.conf";
+        confPath = "server.conf";
     else
     {
         int c, arg_print = 0;
-        pid_t pid_ = 0;
-        char *sig = NULL, *conf_dir_ = NULL;
+        char *sig = NULL;
         while ((c = getopt(argc, argv, "c:s:h:p")) != -1)
         {
             switch (c)
             {
                 case 'c':
-                    conf_dir_ = optarg;
+                    confPath = optarg;
                     break;
                 case 's':
                     sig = optarg;
@@ -199,14 +221,12 @@ int main(int argc, char *argv[])
             }
         }
 
-        if (conf_dir_)
-            conf_path = conf_dir_;
-        else
-            conf_path = "server.conf";
+        if (!confPath.size())
+            confPath = "server.conf";
 
         if (arg_print)
         {
-            if (read_conf_file(conf_path.c_str()))
+            if (read_conf_file(confPath.c_str()))
                 return 1;
             print_config();
             return 0;
@@ -228,7 +248,7 @@ int main(int argc, char *argv[])
                 return 1;
             }
 
-            if (read_conf_file(conf_path.c_str()))
+            if (read_conf_file(confPath.c_str()))
                 return 1;
             pidFile = conf->PidFilePath + "/pid.txt";
             FILE *fpid = fopen(pidFile.c_str(), "r");
@@ -238,12 +258,13 @@ int main(int argc, char *argv[])
                 return 1;
             }
 
-            fscanf(fpid, "%u", &pid_);
+            pid_t pid;
+            fscanf(fpid, "%u", &pid);
             fclose(fpid);
 
-            if (kill(pid_, sig_send))
+            if (kill(pid, sig_send))
             {
-                fprintf(stderr, "<%d> Error kill(pid=%u, sig=%u): %s\n", __LINE__, pid_, sig_send, strerror(errno));
+                fprintf(stderr, "<%d> Error kill(pid=%u, sig=%u): %s\n", __LINE__, pid, sig_send, strerror(errno));
                 return 1;
             }
 
@@ -251,11 +272,11 @@ int main(int argc, char *argv[])
         }
     }
 
-    while (restart)
+    while (restartServer)
     {
-        restart = 0;
+        restartServer = 0;
 
-        if (read_conf_file(conf_path.c_str()))
+        if (read_conf_file(confPath.c_str()))
             return 1;
 
         set_uid();
@@ -270,9 +291,9 @@ int main(int argc, char *argv[])
 
         Connect::serverSocket = sockServer;
         //--------------------------------------------------------------
-        if (start == 0)
+        if (startServer == 0)
         {
-            start = 1;
+            startServer = 1;
             pidFile = conf->PidFilePath + "/pid.txt";
             FILE *fpid = fopen(pidFile.c_str(), "w");
             if (!fpid)
@@ -323,7 +344,7 @@ int main(int argc, char *argv[])
             break;
     }
 
-    if (start == 1)
+    if (startServer == 1)
         remove(pidFile.c_str());
     return 0;
 }
@@ -355,22 +376,13 @@ int main_proc()
         return -1;
     }
 
+    //   Creating processes
     pfd_in = pfd[0];
-    //   Creating first process
-    pid_child = create_child(sockServer, 0, &pfd_in, pfd[1], CONNECT_ALLOW);
-    if (pid_child < 0)
+    numCreatedProc = 0;
+    for ( ; numCreatedProc < conf->NumProc; ++numCreatedProc)
     {
-        fprintf(stderr, "<%s:%d> Error create_child()\n", __func__, __LINE__);
-        exit(1);
-    }
-
-    //   Creating ather processes
-    pid_t pid_;
-    unsigned int num_create_proc = 1;
-    for ( ; num_create_proc < conf->NumProc; ++num_create_proc)
-    {
-        pid_ = create_child(sockServer, num_create_proc, &pfd_in, pfd[1], CONNECT_IGN);
-        if (pid_ < 0)
+        pidChild[numCreatedProc] = create_child(sockServer, numCreatedProc, &pfd_in, pfd[1], CONNECT_IGN);
+        if (pidChild[numCreatedProc] < 0)
         {
             fprintf(stderr, "<%s:%d> Error create_child()\n", __func__, __LINE__);
             exit(1);
@@ -401,16 +413,16 @@ int main_proc()
             break;
         else if (status == (CONNECT_ALLOW | 0x80))
         {
-            if (num_create_proc < conf->MaxNumProc)
+            if (numCreatedProc < conf->MaxNumProc)
             {
-                pid_ = create_child(sockServer, num_create_proc, &pfd_in, pfd[1], CONNECT_ALLOW);
-                if (pid_ < 0)
+                pidChild[numCreatedProc] = create_child(sockServer, numCreatedProc, &pfd_in, pfd[1], CONNECT_ALLOW);
+                if (pidChild[numCreatedProc] < 0)
                 {
                     fprintf(stderr, "<%s:%d> Error create_child()\n", __func__, __LINE__);
                     exit(1);
                 }
 
-                ++num_create_proc;
+                ++numCreatedProc;
             }
             else
             {
@@ -432,7 +444,7 @@ int main_proc()
             }
         }
         else
-            print_err("<%s:%d> !!! status: 0x%x, from proc: %u\n", __func__, __LINE__, (int)status, num_create_proc - 1);
+            print_err("<%s:%d> !!! status: 0x%x, from proc: %u\n", __func__, __LINE__, (int)status, numCreatedProc - 1);
     }
 
     close(sockServer);
@@ -446,7 +458,7 @@ int main_proc()
     shutdown(sockServer, SHUT_RDWR);
     close(pfd[1]);
 
-    if (restart == 0)
+    if (restartServer == 0)
         fprintf(stderr, "<%s> ***** Close *****\n", __func__);
     else
         fprintf(stderr, "<%s> ***** Reload *****\n", __func__);
@@ -510,7 +522,7 @@ pid_t create_child(int sock, unsigned int num_chld, int *pfd_i, int fd_close, ch
     *pfd_i = pfd[0];
 
     char ch;
-    int ret = read_timeout(pfd[0], &ch, sizeof(ch), 3);
+    int ret = read_from_pipe(pfd[0], &ch, sizeof(ch), 3);
     if (ret <= 0)
     {
         fprintf(stderr, "<%s:%d> Error read()=%d\n", __func__, __LINE__, ret);

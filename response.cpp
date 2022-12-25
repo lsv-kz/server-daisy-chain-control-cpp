@@ -416,8 +416,15 @@ int send_file(Connect *req)
                 req->respContentLength = pr->len;
                 if (req->reqMethod == M_HEAD)
                 {
-                    if (send_response_headers(req, NULL))
+                    if (create_response_headers(req, NULL))
                         return -1;
+                    if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
+                    {
+                        print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
+                        req->req_hd.iReferer = MAX_HEADERS - 1;
+                        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
+                        return -1;
+                    }
                     return 0;
                 }
             }
@@ -438,14 +445,22 @@ int send_file(Connect *req)
         req->respContentLength = req->fileSize;
         if (req->reqMethod == M_HEAD)
         {
-            if (send_response_headers(req, NULL))
+            if (create_response_headers(req, NULL))
                 return -1;
+            if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
+            {
+                print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
+                req->req_hd.iReferer = MAX_HEADERS - 1;
+                req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
+                return -1;
+            }
             return 0;
         }
     }
 
-    if (send_response_headers(req, NULL))
+    if (create_response_headers(req, NULL))
         return -1;
+
     push_pollout_list(req);
 
     return 1;
@@ -475,8 +490,16 @@ int send_multypart(Connect *req, ArrayRanges& rg, char *rd_buf, int size)
         return -1;
     }
 
-    if (send_response_headers(req, &hdrs))
+    if (create_response_headers(req, &hdrs))
         return -1;
+    if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
+    {
+        print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
+        req->req_hd.iReferer = MAX_HEADERS - 1;
+        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
+        return -1;
+    }
+
     if (req->reqMethod == M_HEAD)
         return 0;
 
@@ -490,10 +513,10 @@ int send_multypart(Connect *req, ArrayRanges& rg, char *rd_buf, int size)
             return -1;
         }
 
-        n = write_timeout(req->clientSocket, buf, strlen(buf), conf->Timeout);
+        n = write_to_client(req, buf, strlen(buf), conf->Timeout);
         if (n < 0)
         {
-            print_err(req, "<%s:%d> Error: write_timeout(), %lld bytes\n", __func__, __LINE__, send_all_bytes);
+            print_err(req, "<%s:%d> Error: write_to_client(), %lld bytes\n", __func__, __LINE__, send_all_bytes);
             return -1;
         }
 
@@ -509,10 +532,10 @@ int send_multypart(Connect *req, ArrayRanges& rg, char *rd_buf, int size)
 
     req->send_bytes = send_all_bytes;
     snprintf(buf, sizeof(buf), "\r\n--%s--\r\n", boundary);
-    n = write_timeout(req->clientSocket, buf, strlen(buf), conf->Timeout);
+    n = write_to_client(req, buf, strlen(buf), conf->Timeout);
     if (n < 0)
     {
-        print_err(req, "<%s:%d> Error: write_timeout() %lld bytes\n", __func__, __LINE__, send_all_bytes);
+        print_err(req, "<%s:%d> Error: write_to_client() %lld bytes\n", __func__, __LINE__, send_all_bytes);
         return -1;
     }
     req->send_bytes += n;
@@ -556,8 +579,14 @@ int create_multipart_head(Connect *req, struct Range *ranges, char *buf, int len
 int options(Connect *req)
 {
     req->respStatus = RS200;
-    if (send_response_headers(req, NULL))
+    if (create_response_headers(req, NULL))
+        return -1;
+
+    if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
     {
+        print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
+        req->req_hd.iReferer = MAX_HEADERS - 1;
+        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
         return -1;
     }
 

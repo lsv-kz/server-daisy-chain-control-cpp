@@ -233,7 +233,12 @@ int cgi_read_headers(Connect *req, int cgi_serv_in)
 
         if (!strlcmp_case(str, "Status", 6))
         {
-            req->respStatus = atoi(str + 7);//  req->respStatus = strtol(str + 7, NULL, 10);
+            req->respStatus = atoi(str + 7);
+            if (req->respStatus >= RS500)
+            {
+                send_message(req, NULL, NULL);
+                return 0;
+            }
             continue;
         }
 

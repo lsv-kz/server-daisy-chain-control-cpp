@@ -69,14 +69,14 @@ int Connect::find_empty_line()
 {
     if (err) return -1;
     timeout = conf->Timeout;
-    char *pCR, *pLF, ch;
+    char *pCR, *pLF;
     while (lenTail > 0)
     {
         int i = 0, len_line = 0;
         pCR = pLF = NULL;
         while (i < lenTail)
         {
-            ch = *(p_newline + i);
+            char ch = *(p_newline + i);
             if (ch == '\r')// found CR
             {
                 if (i == (lenTail - 1))
@@ -129,6 +129,13 @@ int Connect::find_empty_line()
             if (countReqHeaders < MAX_HEADERS)
             {
                 reqHdName[countReqHeaders] = p_newline;
+                if (countReqHeaders == 0)
+                {
+                    int ret = parse_startline_request(this, reqHdName[0]);
+                    if (ret < 0)
+                        return ret;
+                }
+
                 countReqHeaders++;
             }
             else

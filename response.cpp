@@ -25,16 +25,9 @@ void response1(RequestManager *ReqMan)
         if (req->numReq == 1)
             get_nameinfo(req);
         //--------------------------------------------------------------
-        int ret = parse_startline_request(req, req->reqHdName[0]);
-        if (ret)
-        {
-            print_err(req, "<%s:%d>  Error parse_startline_request(): %d\n", __func__, __LINE__, ret);
-            goto end;
-        }
-
         for (int i = 1; i < req->countReqHeaders; ++i)
         {
-            ret = parse_headers(req, req->reqHdName[i], i);
+            int ret = parse_headers(req, req->reqHdName[i], i);
             if (ret < 0)
             {
                 print_err(req, "<%s:%d>  Error parse_headers(): %d\n", __func__, __LINE__, ret);
@@ -119,11 +112,8 @@ void response1(RequestManager *ReqMan)
     end:
         end_response(req);
 
-        ret = ReqMan->end_thr(0);
-        if (ret)
-        {
+        if (ReqMan->end_thr(0))
             return;
-        }
     }
 }
 //======================================================================

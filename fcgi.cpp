@@ -45,53 +45,36 @@ int get_sock_fcgi(Connect *req, const char *script)
     return fcgi_sock;
 }
 //======================================================================
-int fcgi_read_headers(char *s, int len, String *hdrs, int *stat)
+int fcgi_read_headers(FCGI_client& Fcgi, String *hdrs, int *stat)
 {
-    char *start_ptr = s;
-    int i = len;
+    char *p;
 
     while (1)
     {
-        char *end_ptr;
-        if (i <= 0)
+        int hd_len = Fcgi.fcgi_read_http_header(&p);
+        if (hd_len < 0)
         {
-            print_err("<%s:%d> i = %d\n", __func__, __LINE__, i);
+            print_err("<%s:%d> fcgi_read_http_header()=%d\n", __func__, __LINE__, hd_len);
             return -1;
         }
-        end_ptr = (char*)memchr(start_ptr, '\n', i);
-        if (end_ptr)
+        
+        if (hd_len == 0)
+            break;
+//fwrite(p, 1, n, stderr);
+//fprintf(stderr, "\n");
+        if (!strncmp("Status", p, 6))
         {
-            int n = end_ptr - start_ptr + 1;
-            i -= n;
-
-            if ((n > 1) && (*(end_ptr - 1) == '\r'))
-                n -= 2;
-            else if (n == 1)
-                --n;
-
-            if (n == 0)
-                break;
-
-            if (!strncmp("Status", start_ptr, 6))
-            {
-                *(start_ptr + n) = 0;
-                *stat = atoi(start_ptr + 7);
-            }
-            else
-            {
-                hdrs->append(start_ptr, n);
-                *(hdrs) << "\r\n";
-            }
-            start_ptr = end_ptr + 1;
+            *stat = atoi(p + 7);
         }
         else
         {
-            printf("<%s:%d> ----\n", __func__, __LINE__);
-            return -1;
+            //hdrs->append(p, hd_len);
+            //*(hdrs) << "\r\n";
+            *(hdrs) << p << "\r\n";
         }
     }
 
-    return len - i;
+    return 0;
 }
 //======================================================================
 int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
@@ -158,7 +141,26 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
     req->respStatus = RS200;
 
     char *p;
-    int empty_line = 0;
+
+    int ret = fcgi_read_headers(Fcgi, &hdrs, &req->respStatus);
+    if (ret < 0)
+    {
+        fprintf(stderr, "<%s:%d> Error fcgi_read_headers()=%d\n", __func__, __LINE__, ret);
+        return -500;
+    }
+    
+    if (create_response_headers(req, &hdrs) == -1)
+        return -1;
+    if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
+    {
+        print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
+        req->req_hd.iReferer = MAX_HEADERS - 1;
+        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
+            return -1;
+    }
+
+    if (req->respStatus == RS204)
+        return 0;
 
     while (1)
     {
@@ -172,39 +174,10 @@ int fcgi_(Connect *req, int fcgi_sock, FCGI_client & Fcgi)
             break;
 
         *(p + n) = 0;
-        if (!empty_line)
-        {
-            int tail = fcgi_read_headers(p, n, &hdrs, &req->respStatus);
-            if (tail >= 0)
-            {
-                if (chunk_mode)
-                {
-                    if (create_response_headers(req, &hdrs) == -1)
-                        return -1;
-                    if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
-                    {
-                        print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
-                        req->req_hd.iReferer = MAX_HEADERS - 1;
-                        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
-                        return -1;
-                    }
-                }
-
-                chunk.add_arr(p + tail, n - tail);
-            }
-            else
-            {
-                req->respStatus = RS502;
-                send_message(req, NULL, NULL);
-                return -1;
-            }
-            empty_line = 1;
-        }
-        else
-            chunk.add_arr(p, n);
+        chunk.add_arr(p, n);
     }
 
-    int ret = chunk.end();
+    ret = chunk.end();
     req->respContentLength = chunk.len_entity();
     if (ret < 0)
     {

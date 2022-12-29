@@ -86,9 +86,10 @@ void send_message(Connect *req, const char *msg, const String *hdrs)
                 "<meta charset=\"utf-8\">\r\n"
                 "</head>\r\n"
                 "<body>\r\n"
-                "<h3>" << title << "</h3>\r\n"
-                "<p>" << (msg ? msg : "") <<  "</p>\r\n"
-                "<hr>\r\n" << req->sTime << "\r\n"
+                "<h3>" << title << "</h3>\r\n";
+        if (msg)
+            html << "<p>" << msg <<  "</p>\r\n";
+        html << "<hr>\r\n" << req->sTime << "\r\n"
                 "</body>\r\n"
                 "</html>\r\n";
 

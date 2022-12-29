@@ -22,7 +22,7 @@
 #define FCGI_MAXTYPE            (FCGI_UNKNOWN_TYPE)
 #define requestId               1
 
-const int FCGI_SIZE_BUF = 4096;
+const int FCGI_SIZE_BUF = 1024;
 //======================================================================
 typedef struct {
     unsigned char type;
@@ -32,10 +32,16 @@ typedef struct {
 //----------------------------------------------------------------------
 class FCGI_client
 {
-    int err = 0;
-    char fcgi_buf[FCGI_SIZE_BUF];
     const char *str_zero = "\0\0\0\0\0\0\0\0";
-    int offset_out = 0, all_send = 0;
+    char fcgi_buf[FCGI_SIZE_BUF];
+
+    int err = 0;
+
+    int offset_out, all_send;
+
+    int offset_in;
+    int http_hd_size;
+
     const int SIZE_HEADER = 8;
     int fcgi_sock;
     int TimeoutCGI = 10;
@@ -50,7 +56,7 @@ class FCGI_client
 
         if (end) // && ((offset_out + 16) <= FCGI_SIZE_BUF))
         {
-            char s[8] = {1, 4, 0, 1, 0, 0, 0, 0};// ptr_buf
+            char s[8] = {1, 4, 0, 1, 0, 0, 0, 0};
             memcpy(fcgi_buf + SIZE_HEADER + offset_out, s, 8);
             offset_out += 8;
             end = 0;
@@ -149,6 +155,7 @@ class FCGI_client
                 err = 1;
                 return -1;
             }
+
             if (fdrd.revents & POLLIN)
             {
                 ret = read(fcgi_sock, p, len);
@@ -233,7 +240,6 @@ class FCGI_client
         header->type = (unsigned char)buf[1];
         header->paddingLen = (unsigned char)buf[6];
         header->len = ((unsigned char)buf[4]<<8) | (unsigned char)buf[5];
-
         return n;
     }
 
@@ -243,7 +249,8 @@ public://===============================================================
     {
         fcgi_sock = sock;
         TimeoutCGI = timeout;
-        offset_out = 0;
+        offset_out = all_send = 0;
+        offset_in = http_hd_size = 0;
         err = 0;
         fcgi_send_begin();
     }
@@ -251,6 +258,9 @@ public://===============================================================
     int error() const { return err; }
     int send_bytes() { return all_send; }
     void add(const char *name, const char *val);
+
+    int get_line();
+    int fcgi_read_http_header(char**);
     int fcgi_stdout(char **p);
     int fcgi_stdin(const char *p, int len);
 };
@@ -319,12 +329,113 @@ public://===============================================================
         offset_out += len;
     }
     //==================================================================
-    int FCGI_client::fcgi_stdout(char **p) // *** FCGI_STDOUT ***
+    int FCGI_client::get_line()
+    {
+        char *pLF;
+
+        while (1)
+        {
+            int i = 0, len_line = 0;
+            pLF = NULL;
+            while ((http_hd_size + i) < offset_in)
+            {
+                char ch = *(fcgi_buf + http_hd_size + i);
+                if (ch == '\n')// found LF
+                {
+                    pLF = fcgi_buf + http_hd_size + i;
+                    break;
+                }
+                else if (ch == '\r')
+                    ;
+                else
+                    len_line++;
+                ++i;
+            }
+
+            if (pLF)
+            {
+                *(fcgi_buf + http_hd_size + len_line) = 0;
+                http_hd_size += (i + 1);
+                return len_line;
+            }
+            else
+                return -1;
+        }
+
+        return -1;
+    }
+    //==================================================================
+    int FCGI_client::fcgi_read_http_header(char **p)
     {
         char padd[256];
-        *p = fcgi_buf;
+        int n;
+
+        *p = fcgi_buf + http_hd_size;
+        n = get_line();
+        if (n >= 0)
+            return n;
+
+        while (1)
+        {
+            if (header.len > 0)
+                n = header.len;
+            else
+            {
+                n = fcgi_read_header(&header);
+                if (n <= 0)
+                {
+                    err = 1;
+                    return -1;
+                }
+            }
+
+            int rd = (header.len <= (FCGI_SIZE_BUF - 1)) ? header.len : (FCGI_SIZE_BUF - 1);
+            n = fcgi_read(fcgi_buf + offset_in, rd);
+            if (n <= 0)
+            {
+                fprintf(stderr, "<%s:%d> Error: fcgi_read FCGI_STDOUT\n",  __func__, __LINE__);
+                return -1;
+            }
+
+            header.len -= n;
+            offset_in += n;
+            
+            n = get_line();
+
+            if ((header.paddingLen > 0) && (header.len == 0))
+            {
+                if (header.paddingLen <= (int)sizeof(padd))
+                {
+                    fcgi_read(padd, header.paddingLen);
+                    header.paddingLen = 0;
+                }
+                else
+                {
+                    err = 1;
+                    return -1;
+                }
+            }
+
+            if (n >= 0)
+                return n;
+        }
+
+        return -1;
+    }
+    //==================================================================
+    int FCGI_client::fcgi_stdout(char **p) // *** FCGI_STDOUT ***,  client IN
+    {
+        char padd[256];
         if (err)
             return -1;
+        *p = NULL;
+        if (http_hd_size > 0)
+        {
+            *p = fcgi_buf + http_hd_size;
+            int ret = offset_in - http_hd_size;
+            offset_in = http_hd_size = 0;
+            return ret;
+        }
 
         while (1)
         {
@@ -343,7 +454,9 @@ public://===============================================================
             if (header.type == FCGI_STDOUT)
             {
                 if (header.len == 0)
+                {
                     continue;
+                }
 
                 int rd = (header.len <= (FCGI_SIZE_BUF - 1)) ? header.len : (FCGI_SIZE_BUF - 1);
                 int n = fcgi_read(fcgi_buf, rd);
@@ -355,17 +468,15 @@ public://===============================================================
 
                 header.len -= n;
                 fcgi_buf[n] = 0;
-
+                *p = fcgi_buf;
                 return n;
             }
             else if (header.type == FCGI_END_REQUEST)
             {
                 int n = fcgi_read(padd, header.len);
                 if (n > 0)
-                {
                     header.len -= n;
-                }
-
+                
                 if (header.paddingLen > 0)
                     fcgi_read(padd, header.paddingLen);
                 return 0;
@@ -394,7 +505,7 @@ public://===============================================================
         }
     }
     //==================================================================
-    int FCGI_client::fcgi_stdin(const char *p, int len)// *** FCGI_STDIN ***
+    int FCGI_client::fcgi_stdin(const char *p, int len)// *** FCGI_STDIN ***,  client out
     {
         if (err)
             return err;

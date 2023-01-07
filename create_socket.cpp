@@ -74,7 +74,11 @@ int create_fcgi_socket(const char *host)
     char port[16];
 
     if (!host)
+    {
+        print_err("<%s:%d> Error: host=NULL\n", __func__, __LINE__);
         return -1;
+    }
+
     n = sscanf(host, "%[^:]:%s", addr, port);
     if (n == 2) //==== AF_INET ====
     {
@@ -85,7 +89,8 @@ int create_fcgi_socket(const char *host)
         sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (sockfd == -1)
         {
-            return -errno;
+            print_err("<%s:%d> Error socket(): %s\n", __func__, __LINE__, strerror(errno));
+            return -1;
         }
 
         if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&sock_opt, sizeof(sock_opt)))
@@ -102,13 +107,14 @@ int create_fcgi_socket(const char *host)
         {
             print_err("<%s:%d> Error inet_pton(%s): %s\n", __func__, __LINE__, addr, strerror(errno));
             close(sockfd);
-            return -errno;
+            return -1;
         }
 
         if (connect(sockfd, (struct sockaddr *)(&sock_addr), sizeof(sock_addr)) != 0)
         {
+            print_err("<%s:%d> Error connect(%s): %s\n", __func__, __LINE__, host, strerror(errno));
             close(sockfd);
-            return -errno;
+            return -1;
         }
     }
     else //==== PF_UNIX ====
@@ -116,15 +122,19 @@ int create_fcgi_socket(const char *host)
         struct sockaddr_un sock_addr;
         sockfd = socket (PF_UNIX, SOCK_STREAM, 0);
         if (sockfd == -1)
-            return -errno;
+        {
+            print_err("<%s:%d> Error socket(): %s\n", __func__, __LINE__, strerror(errno));
+            return -1;
+        }
 
         sock_addr.sun_family = AF_UNIX;
         strcpy (sock_addr.sun_path, host);
 
         if (connect (sockfd, (struct sockaddr *) &sock_addr, SUN_LEN(&sock_addr)) == -1)
         {
+            print_err("<%s:%d> Error connect(%s): %s\n", __func__, __LINE__, host, strerror(errno));
             close(sockfd);
-            return -errno;
+            return -1;
         }
     }
 

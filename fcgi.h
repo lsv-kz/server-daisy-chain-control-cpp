@@ -40,7 +40,7 @@ class FCGI_client
     int offset_out, all_send;
 
     int offset_in;
-    int http_hd_size;
+    int http_headers_size;
 
     const int SIZE_HEADER = 8;
     int fcgi_sock;
@@ -250,22 +250,22 @@ public://===============================================================
         fcgi_sock = sock;
         TimeoutCGI = timeout;
         offset_out = all_send = 0;
-        offset_in = http_hd_size = 0;
+        offset_in = http_headers_size = 0;
         err = 0;
         fcgi_send_begin();
     }
     //------------------------------------------------------------------
     int error() const { return err; }
     int send_bytes() { return all_send; }
-    void add(const char *name, const char *val);
+    void param(const char *name, const char *val);
 
     int get_line();
     int fcgi_read_http_header(char**);
-    int fcgi_stdout(char **p);
-    int fcgi_stdin(const char *p, int len);
+    int read_from_fcgi_server(char **p);
+    int send_to_fcgi_server(const char *p, int len);
 };
 //======================================================================
-    void FCGI_client::add(const char *name, const char *val)
+    void FCGI_client::param(const char *name, const char *val)
     {
         if (err)
             return;
@@ -337,12 +337,12 @@ public://===============================================================
         {
             int i = 0, len_line = 0;
             pLF = NULL;
-            while ((http_hd_size + i) < offset_in)
+            while ((http_headers_size + i) < offset_in)
             {
-                char ch = *(fcgi_buf + http_hd_size + i);
+                char ch = *(fcgi_buf + http_headers_size + i);
                 if (ch == '\n')// found LF
                 {
-                    pLF = fcgi_buf + http_hd_size + i;
+                    pLF = fcgi_buf + http_headers_size + i;
                     break;
                 }
                 else if (ch == '\r')
@@ -354,8 +354,8 @@ public://===============================================================
 
             if (pLF)
             {
-                *(fcgi_buf + http_hd_size + len_line) = 0;
-                http_hd_size += (i + 1);
+                *(fcgi_buf + http_headers_size + len_line) = 0;
+                http_headers_size += (i + 1);
                 return len_line;
             }
             else
@@ -370,7 +370,7 @@ public://===============================================================
         char padd[256];
         int n;
 
-        *p = fcgi_buf + http_hd_size;
+        *p = fcgi_buf + http_headers_size;
         n = get_line();
         if (n >= 0)
             return n;
@@ -404,16 +404,8 @@ public://===============================================================
 
             if ((header.paddingLen > 0) && (header.len == 0))
             {
-                if (header.paddingLen <= (int)sizeof(padd))
-                {
-                    fcgi_read(padd, header.paddingLen);
-                    header.paddingLen = 0;
-                }
-                else
-                {
-                    err = 1;
-                    return -1;
-                }
+                fcgi_read(padd, header.paddingLen);
+                header.paddingLen = 0;
             }
 
             if (n >= 0)
@@ -423,17 +415,17 @@ public://===============================================================
         return -1;
     }
     //==================================================================
-    int FCGI_client::fcgi_stdout(char **p) // *** FCGI_STDOUT ***,  client IN
+    int FCGI_client::read_from_fcgi_server(char **p) // *** FCGI_STDOUT ***,  fcgi_client IN
     {
         char padd[256];
         if (err)
             return -1;
         *p = NULL;
-        if (http_hd_size > 0)
+        if (http_headers_size > 0)
         {
-            *p = fcgi_buf + http_hd_size;
-            int ret = offset_in - http_hd_size;
-            offset_in = http_hd_size = 0;
+            *p = fcgi_buf + http_headers_size;
+            int ret = offset_in - http_headers_size;
+            offset_in = http_headers_size = 0;
             return ret;
         }
 
@@ -442,7 +434,10 @@ public://===============================================================
             if (header.len == 0)
             {
                 if (header.paddingLen > 0)
+                {
                     fcgi_read(padd, header.paddingLen);
+                    header.paddingLen = 0;
+                }
                 int n = fcgi_read_header(&header);
                 if (n <= 0)
                 {
@@ -478,7 +473,10 @@ public://===============================================================
                     header.len -= n;
                 
                 if (header.paddingLen > 0)
+                {
                     fcgi_read(padd, header.paddingLen);
+                    header.paddingLen = 0;
+                }
                 return 0;
             }
             else if (header.type == FCGI_STDERR)
@@ -505,7 +503,7 @@ public://===============================================================
         }
     }
     //==================================================================
-    int FCGI_client::fcgi_stdin(const char *p, int len)// *** FCGI_STDIN ***,  client out
+    int FCGI_client::send_to_fcgi_server(const char *p, int len)// *** FCGI_STDIN ***,  fcgi_client out
     {
         if (err)
             return err;

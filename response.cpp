@@ -404,19 +404,6 @@ int send_file(Connect *req)
             {
                 req->offset = pr->start;
                 req->respContentLength = pr->len;
-                if (req->reqMethod == M_HEAD)
-                {
-                    if (create_response_headers(req, NULL))
-                        return -1;
-                    if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
-                    {
-                        print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
-                        req->req_hd.iReferer = MAX_HEADERS - 1;
-                        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
-                        return -1;
-                    }
-                    return 0;
-                }
             }
             else
                 return -RS500;
@@ -433,19 +420,6 @@ int send_file(Connect *req)
         req->respStatus = RS200;
         req->offset = 0;
         req->respContentLength = req->fileSize;
-        if (req->reqMethod == M_HEAD)
-        {
-            if (create_response_headers(req, NULL))
-                return -1;
-            if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
-            {
-                print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
-                req->req_hd.iReferer = MAX_HEADERS - 1;
-                req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
-                return -1;
-            }
-            return 0;
-        }
     }
 
     if (create_response_headers(req, NULL))

@@ -248,7 +248,7 @@ int poll_(int num_chld, int i, int nfd, RequestManager *ReqMan)
                     print_err(r, "<%s:%d> Error: EAGAIN\n", __func__, __LINE__);
                 }
             }
-            else if (r->status == SEND_RESPONSE)
+            else if (r->status == SEND_RESP_HEADERS)
             {
                 if (r->resp.len > 0)
                 {
@@ -267,7 +267,16 @@ int poll_(int num_chld, int i, int nfd, RequestManager *ReqMan)
                     r->resp.p += ret;
                     r->resp.len -= ret;
                     if (r->resp.len == 0)
-                        r->status = SEND_ENTITY;
+                    {
+                        if (r->reqMethod != M_HEAD)
+                            r->status = SEND_ENTITY;
+                        else
+                        {
+                            r->status = NO;
+                            del_from_list(r);
+                            end_response(r);
+                        }
+                    }
                 }
                 else
                 {
@@ -411,7 +420,7 @@ void push_pollout_list(Connect *req)
     req->event = POLLOUT;
     lseek(req->fd, req->offset, SEEK_SET);
     req->sock_timer = 0;
-    req->status = SEND_RESPONSE;
+    req->status = SEND_RESP_HEADERS;
     req->resp.p = req->resp.s.c_str();
     req->resp.len = req->resp.s.size();
     req->next = NULL;

@@ -172,22 +172,3 @@ int get_sock_buf(int domain, int optname, int type, int protocol)
     close(sock);
     return sndbuf;
 }
-//======================================================================
-void get_nameinfo(Connect *req)
-{
-    struct sockaddr_storage clientAddr;
-    socklen_t addrSize = sizeof(struct sockaddr_storage);
-    req->remoteAddr[0] = 0;
-    req->remotePort[0] = 0;
-
-    if (getpeername(req->clientSocket,(struct sockaddr *)&clientAddr, &addrSize))
-        fprintf(stderr, "%u/%u/%u Error getpeername(): %s\n", req->numProc, req->numConn, req->numReq, strerror(errno));
-    else
-        getnameinfo((struct sockaddr *)&clientAddr,
-                addrSize,
-                req->remoteAddr,
-                sizeof(req->remoteAddr),
-                req->remotePort,
-                sizeof(req->remotePort),
-                NI_NUMERICHOST | NI_NUMERICSERV);
-}

@@ -149,7 +149,6 @@ void print_config()
 
          << "\n\n   NumCpuCores            : " << conf->NumCpuCores
          << "\n   MaxWorkConnections     : " << conf->MaxWorkConnections
-         << "\n   MaxEventConnections    : " << conf->MaxEventConnections
 
          << "\n\n   NumProc                : " << conf->NumProc
          << "\n   MaxThreads             : " << conf->MaxThreads
@@ -358,7 +357,7 @@ int main_proc()
     cerr << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
     cout << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
     cerr << "   MaxWorkConnections: " << conf->MaxWorkConnections << ", NumCpuCores: " << conf->NumCpuCores << "\n";
-    cerr << "   SndBufSize: " << conf->SndBufSize << ", MaxEventConnections: " << conf->MaxEventConnections << "\n";
+    cerr << "   SndBufSize: " << conf->SndBufSize << "\n";
     //------------------------------------------------------------------
     for ( ; environ[0]; )
     {

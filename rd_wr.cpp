@@ -211,7 +211,7 @@ int write_to_client(Connect *req, const char *buf, int len, int timeout)
     return write_bytes;
 }
 //======================================================================
-int socket_to_pipe(Connect *req, int fd_out, long long *cont_len)
+int client_to_pipe(Connect *req, int fd_out, long long *cont_len)
 {
     int wr_bytes = 0;
     int rd, wr, ret;

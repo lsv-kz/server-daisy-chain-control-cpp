@@ -22,9 +22,6 @@ void response1(RequestManager *ReqMan)
             return;
         }
         //--------------------------------------------------------------
-        if (req->numReq == 1)
-            get_nameinfo(req);
-        //--------------------------------------------------------------
         for (int i = 1; i < req->countReqHeaders; ++i)
         {
             int ret = parse_headers(req, req->reqHdName[i], i);

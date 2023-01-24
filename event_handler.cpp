@@ -25,8 +25,7 @@ static Connect *work_list_end = NULL;
 static Connect *wait_list_start = NULL;
 static Connect *wait_list_end = NULL;
 
-static Connect **conn_array;
-static struct pollfd *pollfd_array;
+static struct pollfd *poll_fd;
 
 static mutex mtx_;
 static condition_variable cond_;
@@ -172,6 +171,7 @@ mtx_.unlock();
     int i = 0;
     time_t t = time(NULL);
     Connect *r = work_list_start, *next = NULL;
+
     for ( ; r; r = next)
     {
         next = r->next;
@@ -196,9 +196,8 @@ mtx_.unlock();
             if (r->sock_timer == 0)
                 r->sock_timer = t;
 
-            pollfd_array[i].fd = r->clientSocket;
-            pollfd_array[i].events = r->event;
-            conn_array[i] = r;
+            poll_fd[i].fd = r->clientSocket;
+            poll_fd[i].events = r->event;
             ++i;
         }
     }
@@ -206,9 +205,9 @@ mtx_.unlock();
     return i;
 }
 //======================================================================
-int poll_(int num_chld, int i, int nfd, RequestManager *ReqMan)
+int poll_(int num_chld, int nfd, RequestManager *ReqMan)
 {
-    int ret = poll(pollfd_array + i, nfd, conf->TimeoutPoll);
+    int ret = poll(poll_fd, nfd, conf->TimeoutPoll);
     if (ret == -1)
     {
         print_err("[%d]<%s:%d> Error poll(): %s\n", num_chld, __func__, __LINE__, strerror(errno));
@@ -217,17 +216,17 @@ int poll_(int num_chld, int i, int nfd, RequestManager *ReqMan)
     else if (ret == 0)
         return 0;
 
-    for ( ; (i < nfd) && (ret > 0); ++i)
+    Connect *r = work_list_start, *next;
+    for ( int i = 0; (i < nfd) && (ret > 0) && r; r = next, ++i)
     {
-        Connect *r = conn_array[i];
-        if (pollfd_array[i].revents == POLLOUT)
+        next = r->next;
+        if (poll_fd[i].revents == POLLOUT)
         {
             if (r->status == SEND_ENTITY)
             {
                 int wr = send_part_file(r);
                 if (wr == 0)
                 {
-                    r->status = NO;
                     del_from_list(r);
                     end_response(r);
                 }
@@ -245,37 +244,44 @@ int poll_(int num_chld, int i, int nfd, RequestManager *ReqMan)
                 else if (wr == -EAGAIN)
                 {
                     r->sock_timer = 0;
-                    print_err(r, "<%s:%d> Error: EAGAIN\n", __func__, __LINE__);
+                    //print_err(r, "<%s:%d> Error: EAGAIN\n", __func__, __LINE__);
                 }
             }
             else if (r->status == SEND_RESP_HEADERS)
             {
                 if (r->resp.len > 0)
                 {
-                    int ret = send(r->clientSocket, r->resp.p, r->resp.len, 0);
-                    if (ret < 0)
+                    int wr = send(r->clientSocket, r->resp.p, r->resp.len, 0);
+                    if (wr == -1)
                     {
-                        r->err = -1;
-                        r->req_hd.iReferer = MAX_HEADERS - 1;
-                        r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-                        r->status = NO;
-
-                        del_from_list(r);
-                        end_response(r);
-                    }
-
-                    r->resp.p += ret;
-                    r->resp.len -= ret;
-                    if (r->resp.len == 0)
-                    {
-                        if (r->reqMethod != M_HEAD)
-                            r->status = SEND_ENTITY;
+                        if (errno == EAGAIN)
+                            r->sock_timer = 0;
                         else
                         {
-                            r->status = NO;
+                            r->err = -1;
+                            r->req_hd.iReferer = MAX_HEADERS - 1;
+                            r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+
                             del_from_list(r);
                             end_response(r);
                         }
+                    }
+                    else
+                    {
+                        r->resp.p += wr;
+                        r->resp.len -= wr;
+                        if (r->resp.len == 0)
+                        {
+                            if (r->reqMethod != M_HEAD)
+                                r->status = SEND_ENTITY;
+                            else
+                            {
+                                del_from_list(r);
+                                end_response(r);
+                            }
+                        }
+                        else
+                            r->sock_timer = 0;
                     }
                 }
                 else
@@ -284,7 +290,6 @@ int poll_(int num_chld, int i, int nfd, RequestManager *ReqMan)
                     r->err = -1;
                     r->req_hd.iReferer = MAX_HEADERS - 1;
                     r->reqHdValue[r->req_hd.iReferer] = "Error send response headers";
-                    r->status = NO;
 
                     del_from_list(r);
                     end_response(r);
@@ -292,29 +297,32 @@ int poll_(int num_chld, int i, int nfd, RequestManager *ReqMan)
             }
             --ret;
         }
-        else if (pollfd_array[i].revents == POLLIN)
+        else if (poll_fd[i].revents & POLLIN)
         {
-            int n = r->hd_read();
-            if (n == -EAGAIN)
-                r->sock_timer = 0;
-            else if (n < 0)
+            int rd = r->hd_read();
+            if (rd == -EAGAIN)
             {
-                r->err = n;
+                print_err(r, "<%s:%d> Error hd_read(): EAGAIN\n", __func__, __LINE__);
+                r->sock_timer = 0;
+            }
+            else if (rd < 0)
+            {
+                r->err = rd;
                 del_from_list(r);
                 end_response(r);
             }
-            else if (n > 0)
+            else if (rd > 0)
             {
                 del_from_list(r);
                 push_resp_list(r, ReqMan);
             }
-            else // n == 0
+            else // rd == 0
                 r->sock_timer = 0;
             --ret;
         }
-        else if (pollfd_array[i].revents)
+        else if (poll_fd[i].revents)
         {
-            print_err(r, "<%s:%d> Error: events=0x%x, revents=0x%x\n", __func__, __LINE__, pollfd_array[i].events, pollfd_array[i].revents);
+            print_err(r, "<%s:%d> Error: events=0x%x, revents=0x%x\n", __func__, __LINE__, poll_fd[i].events, poll_fd[i].revents);
             if (r->event == POLLOUT)
             {
                 r->req_hd.iReferer = MAX_HEADERS - 1;
@@ -330,7 +338,7 @@ int poll_(int num_chld, int i, int nfd, RequestManager *ReqMan)
         }
     }
 
-    return i;
+    return 1;
 }
 //======================================================================
 void event_handler(RequestManager *ReqMan)
@@ -352,15 +360,8 @@ void event_handler(RequestManager *ReqMan)
         }
     }
 
-    pollfd_array = new(nothrow) struct pollfd [conf->MaxWorkConnections];
-    if (!pollfd_array)
-    {
-        print_err("[%d]<%s:%d> Error malloc(): %s\n", num_chld, __func__, __LINE__, strerror(errno));
-        exit(1);
-    }
-
-    conn_array = new(nothrow) Connect* [conf->MaxWorkConnections];
-    if (!conn_array)
+    poll_fd = new(nothrow) struct pollfd [conf->MaxWorkConnections];
+    if (!poll_fd)
     {
         print_err("[%d]<%s:%d> Error malloc(): %s\n", num_chld, __func__, __LINE__, strerror(errno));
         exit(1);
@@ -383,30 +384,15 @@ void event_handler(RequestManager *ReqMan)
         if (count_resp == 0)
             continue;
 
-        int nfd;
-        for (int i = 0; count_resp > 0; )
+        int ret = poll_(num_chld, count_resp, ReqMan);
+        if (ret < 0)
         {
-            if (count_resp > conf->MaxEventConnections)
-                nfd = conf->MaxEventConnections;
-            else
-                nfd = count_resp;
-
-            int ret = poll_(num_chld, i, nfd, ReqMan);
-            if (ret < 0)
-            {
-                print_err("[%d]<%s:%d> Error poll_()\n", num_chld, __func__, __LINE__);
-                break;
-            }
-            else if (ret == 0)
-                break;
-
-            i += nfd;
-            count_resp -= nfd;
+            print_err("[%d]<%s:%d> Error poll_()\n", num_chld, __func__, __LINE__);
+            continue;
         }
     }
 
-    delete [] pollfd_array;
-    delete [] conn_array;
+    delete [] poll_fd;
 #if defined(SEND_FILE_) && (defined(LINUX_) || defined(FREEBSD_))
     if (conf->SendFile != 'y')
 #endif
@@ -439,7 +425,6 @@ mtx_.unlock();
 //======================================================================
 void push_pollin_list(Connect *req)
 {
-    req->init();
     req->event = POLLIN;
     req->sock_timer = 0;
     req->status = READ_REQUEST;

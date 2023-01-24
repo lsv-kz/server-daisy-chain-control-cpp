@@ -65,7 +65,6 @@ void create_conf_file(const char *path)
 
     fprintf(f, "NumCpuCores  1\n");
     fprintf(f, "MaxWorkConnections  768\n");
-    fprintf(f, "MaxEventConnections  100\n\n");
 
     fprintf(f, "NumProc  1\n");
     fprintf(f, "MaxNumProc  4\n");
@@ -307,8 +306,6 @@ int read_conf_file(FILE *fconf)
                 s2 >> c.NumCpuCores;
             else if ((s1 == "MaxWorkConnections") && is_number(s2.c_str()))
                 s2 >> c.MaxWorkConnections;
-            else if ((s1 == "MaxEventConnections") && is_number(s2.c_str()))
-                s2 >> c.MaxEventConnections;
             else if ((s1 == "TimeoutPoll") && is_number(s2.c_str()))
                 s2 >> c.TimeoutPoll;
             else if (s1 == "DocumentRoot")
@@ -480,12 +477,6 @@ int read_conf_file(FILE *fconf)
         fprintf(stderr, "!!! Error ScriptPath [%s]\n", c.ScriptPath.c_str());
     }
     //------------------------------------------------------------------
-    if (conf->MaxEventConnections <= 0)
-    {
-        print_err("<%s:%d> Error: MaxEventConnections=%d\n", __func__, __LINE__, conf->MaxEventConnections);
-        exit(1);
-    }
-
     if (conf->SndBufSize <= 0)
     {
         print_err("<%s:%d> Error: SndBufSize=%d\n", __func__, __LINE__, conf->SndBufSize);

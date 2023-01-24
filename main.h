@@ -112,7 +112,6 @@ struct Config
     unsigned int NumCpuCores;
 
     int MaxWorkConnections;
-    int MaxEventConnections;
 
     unsigned int NumProc;
     unsigned int MaxNumProc;
@@ -299,7 +298,6 @@ int fcgi(Connect *req);
 int scgi(Connect *req);
 //----------------------------------------------------------------------
 int create_fcgi_socket(const char *host);
-void get_nameinfo(Connect *req);
 //----------------------------------------------------------------------
 int encode(const char *s_in, char *s_out, int len_out);
 int decode(const char *s_in, int len_in, char *s_out, int len);
@@ -310,7 +308,7 @@ int read_from_client(Connect *req, char *buf, int len, int timeout);
 int write_to_pipe(int fd, const char *buf, int len, int timeout);
 int write_to_client(Connect *req, const char *buf, int len, int timeout);
 
-int socket_to_pipe(Connect *req, int fd_out, long long *cont_len);
+int client_to_pipe(Connect *req, int fd_out, long long *cont_len);
 
 int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *cont_len);
 //----------------------------------------------------------------------

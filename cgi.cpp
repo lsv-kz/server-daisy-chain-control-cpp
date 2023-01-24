@@ -234,11 +234,11 @@ int cgi_read_headers(Connect *req, int cgi_serv_in)
         if (!strlcmp_case(str, "Status", 6))
         {
             req->respStatus = atoi(str + 7);
-            if (req->respStatus >= RS500)
+            /*if (req->respStatus >= RS500)
             {
                 send_message(req, NULL, NULL);
                 return 0;
-            }
+            }*/
             continue;
         }
 
@@ -392,7 +392,7 @@ int cgi_fork(Connect *req, int *serv_cgi, int *cgi_serv, String& path)
                 req->req_hd.reqContentLength -= wr_bytes;
             }
 
-            wr_bytes = socket_to_pipe(req, serv_cgi[1], &req->req_hd.reqContentLength);
+            wr_bytes = client_to_pipe(req, serv_cgi[1], &req->req_hd.reqContentLength);
             if ((wr_bytes <= 0) && (req->req_hd.reqContentLength))
             {
                 print_err(req, "<%s:%d> Error client_to_script() = %d\n", __func__, __LINE__, wr_bytes);

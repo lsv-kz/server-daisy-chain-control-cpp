@@ -196,6 +196,7 @@ void end_response(Connect *req)
         }
     #endif
         print_log(req);
+        req->init();
         req->timeout = conf->TimeoutKeepAlive;
         ++req->numReq;
         push_pollin_list(req);
@@ -236,7 +237,7 @@ static void signal_handler_child(int sig)
 {
     if (sig == SIGINT)
     {
-        print_err("[%d] <%s:%d> ### SIGINT ### all_req=%d\n", nProc, __func__, __LINE__, all_req);
+        print_err("[%d] <%s:%d> ### SIGINT ### all_conn=%d, all_req=%d\n", nProc, __func__, __LINE__, allConn, all_req);
     }
     else if (sig == SIGTERM)
     {
@@ -273,8 +274,6 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
     nProc = numProc;
     RM = ReqMan;
     //------------------------------------------------------------------
-    signal(SIGUSR2, SIG_IGN);
-
     if (signal(SIGINT, signal_handler_child) == SIG_ERR)
     {
         print_err("[%d] <%s:%d> Error signal(SIGINT): %s\n", numProc, __func__, __LINE__, strerror(errno));
@@ -370,6 +369,9 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
 
     while (run)
     {
+        struct sockaddr_storage clientAddr;
+        socklen_t addrSize = sizeof(struct sockaddr_storage);
+
         if ((0x7f & status) == CONNECT_ALLOW)
         {
             if (is_maxconn())
@@ -423,7 +425,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
         {
             --ret_poll;
 
-            int clientSocket = accept(sockServer, NULL, NULL);
+            int clientSocket = accept(sockServer, (struct sockaddr *)&clientAddr, &addrSize);
             if (clientSocket == -1)
             {
                 if ((errno == EAGAIN) || (errno == EINTR) || (errno == EMFILE))
@@ -444,12 +446,24 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             int opt = 1;
             ioctl(clientSocket, FIONBIO, &opt);
 
+            req->init();
             req->numProc = numProc;
             req->numConn = ++allConn;
             req->numReq = 1;
             req->serverSocket = sockServer;
             req->clientSocket = clientSocket;
             req->timeout = conf->Timeout;
+            if (getnameinfo((struct sockaddr *)&clientAddr,
+                    addrSize,
+                    req->remoteAddr,
+                    sizeof(req->remoteAddr),
+                    req->remotePort,
+                    sizeof(req->remotePort),
+                    NI_NUMERICHOST | NI_NUMERICSERV))
+            {
+                print_err(req, "<%s:%d> Error getnameinfo()=%d: %s\n", __func__, __LINE__, n, gai_strerror(n));
+                req->remoteAddr[0] = 0;
+            }
 
             start_conn();
             push_pollin_list(req);

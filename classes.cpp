@@ -7,12 +7,12 @@ void Connect::init()
     //------------------------------------
     decodeUri[0] = 0;
     uri = NULL;
-    p_newline = bufReq;
+    p_newline = req.buf;
     tail = NULL;
     //------------------------------------
     err = 0;
     lenTail = 0;
-    lenBufReq = 0;
+    req.len = 0;
     countReqHeaders = 0;
     reqMethod = 0;
     httpProt = 0;
@@ -22,9 +22,10 @@ void Connect::init()
 
     respStatus = 0;
 
-    scriptType = 0;
+    scriptType = NONE;
     scriptName = NULL;
 
+    hdrs = "";
     numPart = 0;
     respContentLength = -1LL;
     respContentType = NULL;
@@ -32,125 +33,6 @@ void Connect::init()
     fd = -1;
     offset = 0;
     send_bytes = 0LL;
-}
-//----------------------------------------------------------------------
-int Connect::hd_read()
-{
-    errno = 0;
-    if (err)
-        return -1;
-    int num_read = SIZE_BUF_REQUEST - lenBufReq - 1;
-    if (num_read <= 0)
-        return -RS414;
-    int n = recv(clientSocket, bufReq + lenBufReq, num_read, 0);
-    if (n < 0)
-    {
-        if (errno == EAGAIN)
-            return -EAGAIN;
-        return -1;
-    }
-    else if (n == 0)
-        return NO_PRINT_LOG;
-
-    lenTail += n;
-    lenBufReq += n;
-    bufReq[lenBufReq] = 0;
-
-    n = find_empty_line();
-    if (n == 1) // empty line found
-        return lenBufReq;
-    else if (n < 0) // error
-        return n;
-
-    return 0;
-}
-//----------------------------------------------------------------------
-int Connect::find_empty_line()
-{
-    if (err) return -1;
-    timeout = conf->Timeout;
-    char *pCR, *pLF;
-    while (lenTail > 0)
-    {
-        int i = 0, len_line = 0;
-        pCR = pLF = NULL;
-        while (i < lenTail)
-        {
-            char ch = *(p_newline + i);
-            if (ch == '\r')// found CR
-            {
-                if (i == (lenTail - 1))
-                    return 0;
-                if (pCR)
-                    return -RS400;
-                pCR = p_newline + i;
-            }
-            else if (ch == '\n')// found LF
-            {
-                pLF = p_newline + i;
-                if ((pCR) && ((pLF - pCR) != 1))
-                    return -RS400;
-                i++;
-                break;
-            }
-            else
-                len_line++;
-            i++;
-        }
-
-        if (pLF) // found end of line '\n'
-        {
-            if (pCR == NULL)
-                *pLF = 0;
-            else
-                *pCR = 0;
-
-            if (len_line == 0) // found empty line
-            {
-                if (countReqHeaders == 0) // empty lines before Starting Line
-                {
-                    if ((pLF - bufReq + 1) > 4) // more than two empty lines
-                        return -RS400;
-                    lenTail -= i;
-                    p_newline = pLF + 1;
-                    continue;
-                }
-
-                if (lenTail > 0) // tail after empty line (Message Body for POST method)
-                {
-                    tail = pLF + 1;
-                    lenTail -= i;
-                }
-                else
-                    tail = NULL;
-                return 1;
-            }
-
-            if (countReqHeaders < MAX_HEADERS)
-            {
-                reqHdName[countReqHeaders] = p_newline;
-                if (countReqHeaders == 0)
-                {
-                    int ret = parse_startline_request(this, reqHdName[0]);
-                    if (ret < 0)
-                        return ret;
-                }
-
-                countReqHeaders++;
-            }
-            else
-                return -RS500;
-
-            lenTail -= i;
-            p_newline = pLF + 1;
-        }
-        else if (pCR && (!pLF))
-            return -RS400;
-        else
-            break;
-    }
-
-    return 0;
 }
 //======================================================================
 /*void ArrayRanges::check_ranges()

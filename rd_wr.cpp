@@ -9,7 +9,7 @@ using namespace std;
 //    #define POLLHUP     0x0010    /* "Положили трубку" */
 //    #define POLLNVAL    0x0020    /* Неверный запрос: fd не открыт */
 //======================================================================
-int poll_read(int fd, int timeout)
+int poll_in(int fd, int timeout)
 {
     int ret, tm;
     struct pollfd fdrd;
@@ -37,7 +37,7 @@ int poll_read(int fd, int timeout)
     return -1;
 }
 //======================================================================
-int poll_write(int fd, int timeout)
+int poll_out(int fd, int timeout)
 {
     int ret, tm;
     struct pollfd fdwr;
@@ -57,7 +57,7 @@ int poll_write(int fd, int timeout)
         }
 
         else if (!ret)
-            return -RS408;
+            return 0;
 
         return fdwr.revents;
     }
@@ -73,7 +73,7 @@ int read_from_pipe(int fd, char *buf, int len, int timeout)
     p = buf;
     while (len > 0)
     {
-        ret = poll_read(fd, timeout);
+        ret = poll_in(fd, timeout);
         if (ret < 0)
             return ret;
 
@@ -101,140 +101,34 @@ int read_from_pipe(int fd, char *buf, int len, int timeout)
     return read_bytes;
 }
 //======================================================================
-int read_from_client(Connect *req, char *buf, int len, int timeout)
-{
-    int read_bytes = 0, ret;
-    char *p;
-
-    p = buf;
-    while (len > 0)
-    {
-        ret = poll_read(req->clientSocket, timeout);
-        if (ret < 0)
-            return ret;
-
-        if (ret & POLLIN)
-        {
-            ret = read(req->clientSocket, p, len);
-            if (ret == -1)
-            {
-                print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
-                return -1;
-            }
-            else if (ret == 0)
-                break;
-
-            p += ret;
-            len -= ret;
-            read_bytes += ret;
-        }
-        else if (ret & POLLHUP)
-            break;
-        else
-            return -1;
-    }
-
-    return read_bytes;
-}
-//======================================================================
-int write_to_pipe(int fd, const char *buf, int len, int timeout)
-{
-    int write_bytes = 0, ret;
-
-    while (len > 0)
-    {
-        ret = poll_write(fd, timeout);
-        if (ret < 0)
-        {
-            print_err("<%s:%d> Error poll(): %s\n", __func__, __LINE__, strerror(errno));
-            if (errno == EINTR)
-                continue;
-            return ret;
-        }
-
-        if (ret == POLLOUT)
-        {
-            ret = write(fd, buf, len);
-            if (ret == -1)
-            {
-                print_err("<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
-                if ((errno == EINTR) || (errno == EAGAIN))
-                    continue;
-                return -1;
-            }
-
-            write_bytes += ret;
-            len -= ret;
-            buf += ret;
-        }
-        else
-            return -1;
-    }
-
-    return write_bytes;
-}
-//======================================================================
 int write_to_client(Connect *req, const char *buf, int len, int timeout)
 {
     int write_bytes = 0, ret;
 
     while (len > 0)
     {
-        ret = poll_write(req->clientSocket, timeout);
-        if (ret < 0)
+        ret = poll_out(req->clientSocket, timeout);
+        if (ret != POLLOUT)
         {
-            print_err(req, "<%s:%d> Error poll(): %s\n", __func__, __LINE__, strerror(errno));
-            if (errno == EINTR)
-                continue;
-            return ret;
-        }
-
-        if (ret == POLLOUT)
-        {
-            ret = write(req->clientSocket, buf, len);
-            if (ret == -1)
-            {
-                print_err(req, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
-                if ((errno == EINTR) || (errno == EAGAIN))
-                    continue;
-                return -1;
-            }
-
-            write_bytes += ret;
-            len -= ret;
-            buf += ret;
-        }
-        else
+            print_err(req, "<%s:%d> Error poll()=0x%x\n", __func__, __LINE__, ret);
             return -1;
+        }
+
+        ret = send(req->clientSocket, buf, len, 0);
+        if (ret == -1)
+        {
+            print_err(req, "<%s:%d> Error send(): %s\n", __func__, __LINE__, strerror(errno));
+            if ((errno == EINTR) || (errno == EAGAIN))
+                continue;
+            return -1;
+        }
+
+        write_bytes += ret;
+        len -= ret;
+        buf += ret;
     }
 
     return write_bytes;
-}
-//======================================================================
-int client_to_pipe(Connect *req, int fd_out, long long *cont_len)
-{
-    int wr_bytes = 0;
-    int rd, wr, ret;
-    char buf[512];
-
-    for ( ; *cont_len > 0; )
-    {
-        rd = (*cont_len > (int)sizeof(buf)) ? (int)sizeof(buf) : *cont_len;
-
-        ret = read_from_client(req, buf, rd, conf->Timeout);
-        if (ret == -1)
-            return -1;
-        else if (ret == 0)
-            break;
-
-        *cont_len -= ret;
-        wr = write_to_pipe(fd_out, buf, ret, conf->TimeoutCGI);
-        if (wr <= 0)
-            return wr;
-        wr_bytes += wr;
-    }
-
-    return wr_bytes;
 }
 //======================================================================
 int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *cont_len)
@@ -261,14 +155,129 @@ int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *c
             break;
 
         wr = write_to_client(req, buf, rd, conf->Timeout);
-        if (wr != rd)
+        if (wr <= 0)
         {
-            print_err(req, "<%s:%d> Error write_to_sock()=%d, %d\n", __func__, __LINE__, wr, rd);
+            print_err(req, "<%s:%d> Error write_to_sock(): %s\n", __func__, __LINE__, strerror(errno));
             return -1;
         }
 
         *cont_len -= wr;
     }
+
+    return 0;
+}
+//======================================================================
+int find_empty_line(Connect *req)
+{
+    req->timeout = conf->Timeout;
+    char *pCR, *pLF;
+    while (req->lenTail > 0)
+    {
+        int i = 0, len_line = 0;
+        pCR = pLF = NULL;
+        while (i < req->lenTail)
+        {
+            char ch = *(req->p_newline + i);
+            if (ch == '\r')// found CR
+            {
+                if (i == (req->lenTail - 1))
+                    return 0;
+                if (pCR)
+                    return -RS400;
+                pCR = req->p_newline + i;
+            }
+            else if (ch == '\n')// found LF
+            {
+                pLF = req->p_newline + i;
+                if ((pCR) && ((pLF - pCR) != 1))
+                    return -RS400;
+                i++;
+                break;
+            }
+            else
+                len_line++;
+            i++;
+        }
+
+        if (pLF) // found end of line '\n'
+        {
+            if (pCR == NULL)
+                *pLF = 0;
+            else
+                *pCR = 0;
+
+            if (len_line == 0) // found empty line
+            {
+                if (req->countReqHeaders == 0) // empty lines before Starting Line
+                {
+                    if ((pLF - req->req.buf + 1) > 4) // more than two empty lines
+                        return -RS400;
+                    req->lenTail -= i;
+                    req->p_newline = pLF + 1;
+                    continue;
+                }
+
+                if (req->lenTail > 0) // tail after empty line (Message Body for POST method)
+                {
+                    req->tail = pLF + 1;
+                    req->lenTail -= i;
+                }
+                else
+                    req->tail = NULL;
+                return 1;
+            }
+
+            if (req->countReqHeaders < MAX_HEADERS)
+            {
+                req->reqHdName[req->countReqHeaders] = req->p_newline;
+                if (req->countReqHeaders == 0)
+                {
+                    int ret = parse_startline_request(req, req->reqHdName[0]);
+                    if (ret < 0)
+                        return ret;
+                }
+
+                req->countReqHeaders++;
+            }
+            else
+                return -RS500;
+
+            req->lenTail -= i;
+            req->p_newline = pLF + 1;
+        }
+        else if (pCR && (!pLF))
+            return -RS400;
+        else
+            break;
+    }
+
+    return 0;
+}
+//======================================================================
+int hd_read(Connect *req)
+{
+    int num_read = SIZE_BUF_REQUEST - req->req.len - 1;
+    if (num_read <= 0)
+        return -RS414;
+    int n = recv(req->clientSocket, req->req.buf + req->req.len, num_read, 0);
+    if (n < 0)
+    {
+        if (errno == EAGAIN)
+            return -EAGAIN;
+        return -1;
+    }
+    else if (n == 0)
+        return -1;
+
+    req->lenTail += n;
+    req->req.len += n;
+    req->req.buf[req->req.len] = 0;
+
+    n = find_empty_line(req);
+    if (n == 1) // empty line found
+        return req->req.len;
+    else if (n < 0) // error
+        return n;
 
     return 0;
 }

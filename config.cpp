@@ -352,7 +352,7 @@ int read_conf_file(FILE *fconf)
                 c.AutoIndex = (char)tolower(s2[0]);
             else
             {
-                fprintf(stderr, "<%s:%d> Error read config file: [%s], line %d\n", __func__, __LINE__, ss.c_str(), line_);
+                fprintf(stderr, "<%s:%d> Error read config file: [%s], line <%d>\n", __func__, __LINE__, ss.c_str(), line_);
                 return -1;
             }
         }
@@ -362,7 +362,7 @@ int read_conf_file(FILE *fconf)
             {
                 if (find_bracket(fconf, '{') == 0)
                 {
-                    fprintf(stderr, "<%s:%d> Error not found \"{\", line %d\n", __func__, __LINE__, line_);
+                    fprintf(stderr, "<%s:%d> Error not found \"{\", line <%d>\n", __func__, __LINE__, line_);
                     return -1;
                 }
 
@@ -381,14 +381,14 @@ int read_conf_file(FILE *fconf)
                         c.index_fcgi = 'y';
                     else
                     {
-                        fprintf(stderr, "<%s:%d> Error read config file: \"index\" [%s], line %d\n", __func__, __LINE__, ss.c_str(), line_);
+                        fprintf(stderr, "<%s:%d> Error read config file: \"index\" [%s], line <%d>\n", __func__, __LINE__, ss.c_str(), line_);
                         return -1;
                     }
                 }
 
                 if (ss.str() != "}")
                 {
-                    fprintf(stderr, "<%s:%d> Error not found \"}\", line %d\n", __func__, __LINE__, line_);
+                    fprintf(stderr, "<%s:%d> Error not found \"}\", line <%d>\n", __func__, __LINE__, line_);
                     return -1;
                 }
             }
@@ -396,7 +396,7 @@ int read_conf_file(FILE *fconf)
             {
                 if (find_bracket(fconf, '{') == 0)
                 {
-                    fprintf(stderr, "<%s:%d> Error not found \"{\", line %d\n", __func__, __LINE__, line_);
+                    fprintf(stderr, "<%s:%d> Error not found \"{\", line <%d>\n", __func__, __LINE__, line_);
                     return -1;
                 }
 
@@ -406,12 +406,12 @@ int read_conf_file(FILE *fconf)
                     ss >> s1;
                     ss >> s2;
 
-                    create_fcgi_list(&c.fcgi_list, s1, s2, fast_cgi);
+                    create_fcgi_list(&c.fcgi_list, s1, s2, FASTCGI);
                 }
 
                 if (ss.str() != "}")
                 {
-                    fprintf(stderr, "<%s:%d> Error not found \"}\", line %d\n", __func__, __LINE__, line_);
+                    fprintf(stderr, "<%s:%d> Error not found \"}\", line <%d>\n", __func__, __LINE__, line_);
                     return -1;
                 }
             }
@@ -419,7 +419,7 @@ int read_conf_file(FILE *fconf)
             {
                 if (find_bracket(fconf, '{') == 0)
                 {
-                    fprintf(stderr, "<%s:%d> Error not found \"{\", line %d\n", __func__, __LINE__, line_);
+                    fprintf(stderr, "<%s:%d> Error not found \"{\", line <%d>\n", __func__, __LINE__, line_);
                     return -1;
                 }
 
@@ -429,24 +429,24 @@ int read_conf_file(FILE *fconf)
                     ss >> s1;
                     ss >> s2;
 
-                    create_fcgi_list(&c.fcgi_list, s1, s2, s_cgi);
+                    create_fcgi_list(&c.fcgi_list, s1, s2, SCGI);
                 }
 
                 if (ss.str() != "}")
                 {
-                    fprintf(stderr, "<%s:%d> Error not found \"}\", line %d\n", __func__, __LINE__, line_);
+                    fprintf(stderr, "<%s:%d> Error not found \"}\", line <%d>\n", __func__, __LINE__, line_);
                     return -1;
                 }
             }
             else
             {
-                fprintf(stderr, "<%s:%d> Error read config file: [%s] line %d\n", __func__, __LINE__, ss.c_str(), line_);
+                fprintf(stderr, "<%s:%d> Error read config file: [%s] line <%d>\n", __func__, __LINE__, ss.c_str(), line_);
                 return -1;
             }
         }
         else
         {
-            fprintf(stderr, "<%s:%d> Error read config file: [%s], line %d\n", __func__, __LINE__, ss.c_str(), line_);
+            fprintf(stderr, "<%s:%d> Error read config file: [%s], line <%d>\n", __func__, __LINE__, ss.c_str(), line_);
             return -1;
         }
     }

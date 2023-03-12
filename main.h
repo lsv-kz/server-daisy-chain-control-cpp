@@ -10,6 +10,7 @@
 #include <cassert>
 #include <climits>
 #include <iomanip>
+#include <vector>
 
 #include <mutex>
 #include <thread>
@@ -58,6 +59,12 @@ typedef struct fcgi_list_addr {
     struct fcgi_list_addr *next;
 } fcgi_list_addr;
 
+struct Param
+{
+    String name;
+    String val;
+};
+
 enum {
     RS101 = 101,
     RS200 = 200,RS204 = 204,RS206 = 206,
@@ -71,14 +78,35 @@ enum {
     M_PATCH, M_DELETE, M_TRACE, M_CONNECT
 };
 enum { HTTP09 = 1, HTTP10, HTTP11, HTTP2 };
-enum { cgi_ex = 1, php_cgi, php_fpm, fast_cgi, s_cgi };
+enum MODE_SEND { NO_CHUNK, CHUNK, CHUNK_END };
+enum CGI_TYPE { NONE = 1, CGI, PHPCGI, PHPFPM, FASTCGI, SCGI };
+enum CGI_DIR { IN, OUT };
 enum { EXIT_THR = 1 };
-enum { NO, READ_REQUEST, SEND_RESP_HEADERS, SEND_ENTITY };
+enum OPERATION_TYPE { READ_REQUEST = 1, SEND_RESP_HEADERS, SEND_ENTITY, INDEX, 
+        CGI_CONNECT, FCGI_BEGIN, CGI_PARAMS, CGI_END_PARAMS, CGI_STDIN, CGI_END_STDIN, CGI_STDOUT, };
 
-const int NO_PRINT_LOG = -1000;
+enum CGI_STATUS { FCGI_READ_HEADER, READ_HEADERS, SEND_HEADERS, READ_CONTENT, READ_ERROR, READ_PADDING, FCGI_CLOSE };
+
+enum POLL_STATUS { WAIT, WORK };
+
 const int PROC_LIMIT = 8;
 
 void print_err(const char *format, ...);
+
+struct Cgi
+{
+    CGI_STATUS status;
+    CGI_DIR dir;
+    char buf[8 + 4096 + 8];
+    int  size_buf = 4096;
+    long len_buf;
+    long len_post;
+    char *p;
+
+    pid_t pid;
+    int  to_script;
+    int  from_script;
+};
 /* ---------------------------------------------------------------------
  *                  Commands send to next process
  * CONNECT_IGN    : The next process MUST NOT receive requests from the client
@@ -176,8 +204,6 @@ public:
     Connect *prev;
     Connect *next;
 
-    int status;
-
     static int serverSocket;
 
     unsigned int numProc, numConn, numReq;
@@ -186,14 +212,19 @@ public:
     time_t    sock_timer;
     int       timeout;
     int       event;
+    OPERATION_TYPE operation;
+    POLL_STATUS    poll_status;
 
     char      remoteAddr[NI_MAXHOST];
     char      remotePort[NI_MAXSERV];
 
-    char      bufReq[SIZE_BUF_REQUEST];
-    int       lenBufReq;
-    char      *p_newline;
+    struct
+    {
+        char      buf[SIZE_BUF_REQUEST];
+        int       len;
+    } req;
 
+    char      *p_newline;
     char      *tail;
     int       lenTail;
 
@@ -234,12 +265,30 @@ public:
         String s;
         const char *p;
         int len;
-    } resp;
+    } resp_headers;
 
+    CGI_TYPE scriptType;
+    const char *scriptName;
+    Cgi *cgi;
+
+    struct
+    {
+        bool headers;
+        int fd;
+
+        int i_param;
+        int size_par;
+        std::vector <Param> vPar;
+
+        unsigned char fcgi_type;
+        int dataLen;
+        int paddingLen;
+    } fcgi;
+
+    MODE_SEND mode_send;
+    String hdrs;
     std::string sTime;
     int respStatus;
-    int scriptType;
-    const char *scriptName;
     int numPart;
     long long respContentLength;
     const char *respContentType;
@@ -249,8 +298,6 @@ public:
     long long send_bytes;
 
     void init();
-    int hd_read();
-    int find_empty_line();
 };
 //----------------------------------------------------------------------
 class RequestManager
@@ -293,9 +340,6 @@ void response1(RequestManager *ReqMan);
 int response2(Connect *req);
 int options(Connect *req);
 int index_dir(Connect *req, std::string& path);
-int cgi(Connect *req);
-int fcgi(Connect *req);
-int scgi(Connect *req);
 //----------------------------------------------------------------------
 int create_fcgi_socket(const char *host);
 //----------------------------------------------------------------------
@@ -303,17 +347,12 @@ int encode(const char *s_in, char *s_out, int len_out);
 int decode(const char *s_in, int len_in, char *s_out, int len);
 //----------------------------------------------------------------------
 int read_from_pipe(int fd, char *buf, int len, int timeout);
-int read_from_client(Connect *req, char *buf, int len, int timeout);
-
-int write_to_pipe(int fd, const char *buf, int len, int timeout);
 int write_to_client(Connect *req, const char *buf, int len, int timeout);
-
-int client_to_pipe(Connect *req, int fd_out, long long *cont_len);
-
 int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *cont_len);
+int hd_read(Connect* req);
 //----------------------------------------------------------------------
-void send_message(Connect *req, const char *msg, const String *);
-int create_response_headers(Connect *req, const String *hdrs);
+void send_message(Connect *req, const char *msg);
+int create_response_headers(Connect *req);
 //----------------------------------------------------------------------
 std::string get_time();
 void get_time(std::string& s);
@@ -344,6 +383,7 @@ int timedwait_close_cgi();
 void cgi_dec();
 //----------------------------------------------------------------------
 void end_response(Connect *req);
+void close_connect(Connect *req);
 //----------------------------------------------------------------------
 void event_handler(RequestManager *ReqMan);
 void push_pollin_list(Connect *req);
@@ -351,5 +391,10 @@ void push_pollout_list(Connect *req);
 void close_event_handler();
 //----------------------------------------------------------------------
 int set_max_fd(int max_open_fd);
+//----------------------------------------------------------------------
+void cgi_handler(RequestManager *ReqMan);
+void push_cgi(Connect *req);
+void push_index(Connect *req);
+void close_cgi_handler(void);
 
 #endif

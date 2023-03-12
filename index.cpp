@@ -61,50 +61,21 @@ int cmp(const void *a, const void *b)
     return i;
 }
 //======================================================================
-int index_chunked(Connect *req, char **list, int numFiles, string& path)
+int create_index_html(Connect *r, char **list, int numFiles, string& path)
 {
     const int len_path = path.size();
     int n, i;
     long long size;
     struct stat st;
-    int chunk;
-    if (req->reqMethod == M_HEAD)
-        chunk = NO_SEND;
-    else
-        chunk = ((req->httpProt == HTTP11) && req->connKeepAlive) ? SEND_CHUNK : SEND_NO_CHUNK;
 
-    ClChunked chunk_buf(req, chunk);
-
-    req->respStatus = RS200;
-    String hdrs(64);
-
-    if (chunk == SEND_CHUNK)
-    {
-        hdrs << "Transfer-Encoding: chunked\r\n";
-    }
-
-    hdrs << "Content-Type: text/html\r\n";
-    req->respContentLength = -1;
-
-    if (chunk)
-    {
-        if (create_response_headers(req, &hdrs))
-            return -1;
-
-        if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
-        {
-            print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
-            req->req_hd.iReferer = MAX_HEADERS - 1;
-            req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
-            return -1;
-        }
-    }
+    if (r->reqMethod == M_HEAD)
+        return 0;
     //------------------------------------------------------------------
-    chunk_buf << "<!DOCTYPE HTML>\r\n"
+    r->resp_headers.s << "<!DOCTYPE HTML>\r\n"
             "<html>\r\n"
             " <head>\r\n"
             "  <meta charset=\"UTF-8\">\r\n"
-            "  <title>Index of " << req->decodeUri << " (ch)</title>\r\n"
+            "  <title>Index of " << r->decodeUri << " (ch)</title>\r\n"
             "  <style>\r\n"
             "    body {\r\n"
             "     margin-left:100px; margin-right:50px;\r\n"
@@ -113,24 +84,14 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
             "  <link href=\"/styles.css\" type=\"text/css\" rel=\"stylesheet\">\r\n"
             " </head>\r\n"
             " <body id=\"top\">\r\n"
-            "  <h3>Index of " << req->decodeUri << "</h3>\r\n"
+            "  <h3>Index of " << r->decodeUri << "</h3>\r\n"
             "  <table border=\"0\" width=\"100\%\">\r\n"
             "   <tr><td><h3>Directories</h3></td></tr>\r\n";
-    if (chunk_buf.error())
-    {
-        print_err("<%s:%d>   Error chunk\n", __func__, __LINE__);
-        return -1;
-    }
     //------------------------------------------------------------------
-    if (!strcmp(req->decodeUri, "/"))
-        chunk_buf << "   <tr><td></td></tr>\r\n";
+    if (!strcmp(r->decodeUri, "/"))
+        r->resp_headers.s << "   <tr><td></td></tr>\r\n";
     else
-        chunk_buf << "   <tr><td><a href=\"../\">Parent Directory/</a></td></tr>\r\n";
-    if (chunk_buf.error())
-    {
-        print_err(req, "<%s:%d>   Error chunk\n", __func__, __LINE__);
-        return -1;
-    }
+        r->resp_headers.s << "   <tr><td><a href=\"../\">Parent Directory/</a></td></tr>\r\n";
     //-------------------------- Directories ---------------------------
     for (i = 0; (i < numFiles); i++)
     {
@@ -143,25 +104,15 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
 
         if (!encode(list[i], buf, sizeof(buf)))
         {
-            print_err(req, "<%s:%d> Error: encode()\n", __func__, __LINE__);
+            print_err(r, "<%s:%d> Error: encode()\n", __func__, __LINE__);
             continue;
         }
 
-        chunk_buf << "   <tr><td><a href=\"" << buf << "/\">" << list[i] << "/</a></td></tr>\r\n";
-        if (chunk_buf.error())
-        {
-            print_err(req, "<%s:%d>   Error chunk\n", __func__, __LINE__);
-            return -1;
-        }
+        r->resp_headers.s << "   <tr><td><a href=\"" << buf << "/\">" << list[i] << "/</a></td></tr>\r\n";
     }
     //------------------------------------------------------------------
-    chunk_buf << "  </table>\r\n   <hr>\r\n  <table border=\"0\" width=\"100\%\">\r\n"
+    r->resp_headers.s << "  </table>\r\n   <hr>\r\n  <table border=\"0\" width=\"100\%\">\r\n"
                 "   <tr><td><h3>Files</h3></td><td></td></tr>\r\n";
-    if (chunk_buf.error())
-    {
-        print_err(req, "<%s:%d>   Error chunk\n", __func__, __LINE__);
-        return -1;
-    }
     //---------------------------- Files -------------------------------
     for (i = 0; i < numFiles; i++)
     {
@@ -176,32 +127,26 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
 
         if (!encode(list[i], buf, sizeof(buf)))
         {
-            print_err(req, "<%s:%d> Error: encode()\n", __func__, __LINE__);
+            print_err(r, "<%s:%d> Error: encode()\n", __func__, __LINE__);
             continue;
         }
 
         size = (long long)st.st_size;
 
         if (isimage(list[i]) && (conf->ShowMediaFiles == 'y'))
-            chunk_buf << "   <tr><td><a href=\"" << buf << "\"><img src=\"" << buf << "\" width=\"100\"></a>" << list[i] << "</td>"
+            r->resp_headers.s << "   <tr><td><a href=\"" << buf << "\"><img src=\"" << buf << "\" width=\"100\"></a>" << list[i] << "</td>"
                       << "<td align=\"right\">" << size << " bytes</td></tr>\r\n";
         else if (isaudiofile(list[i]) && (conf->ShowMediaFiles == 'y'))
-            chunk_buf << "   <tr><td><audio preload=\"none\" controls src=\"" << buf << "\"></audio><a href=\""
+            r->resp_headers.s << "   <tr><td><audio preload=\"none\" controls src=\"" << buf << "\"></audio><a href=\""
                       << buf << "\">" << list[i] << "</a></td><td align=\"right\">" << size << " bytes</td></tr>\r\n";
         else
-            chunk_buf << "   <tr><td><a href=\"" << buf << "\">" << list[i] << "</a></td><td align=\"right\">"
+            r->resp_headers.s << "   <tr><td><a href=\"" << buf << "\">" << list[i] << "</a></td><td align=\"right\">"
                       << size << " bytes</td></tr>\r\n";
-
-        if (chunk_buf.error())
-        {
-            print_err(req, "<%s:%d>   Error chunk\n", __func__, __LINE__);
-            return -1;
-        }
     }
     //------------------------------------------------------------------
-    chunk_buf << "  </table>\r\n"
+    r->resp_headers.s << "  </table>\r\n"
               "  <hr>\r\n"
-              "  " << req->sTime << "\r\n"
+              "  " << r->sTime << "\r\n"
               "  <a href=\"#top\" style=\"display:block;\r\n"
               "         position:fixed;\r\n"
               "         bottom:30px;\r\n"
@@ -214,45 +159,14 @@ int index_chunked(Connect *req, char **list, int numFiles, string& path)
               "         color:black;\r\n"
               "         opacity: 0.7\">^</a>\r\n"
               " </body>\r\n"
-              "</html>\r\n";
-    if (chunk_buf.error())
-    {
-        print_err(req, "<%s:%d>   Error chunk\n", __func__, __LINE__);
-        return -1;
-    }
+              "</html>";
     //------------------------------------------------------------------
-    n = chunk_buf.end();
-    req->respContentLength = chunk_buf.all();
-    if (n < 0)
-    {
-        req->send_bytes = chunk_buf.all();
-        print_err(req, "<%s:%d>   Error chunk_buf.end(): %d\n", __func__, __LINE__, n);
-        return -1;
-    }
+    r->respContentLength = r->resp_headers.s.size();
 
-    if (chunk == NO_SEND)
-    {
-        if (create_response_headers(req, &hdrs))
-        {
-            print_err("<%s:%d> Error send_header_response()\n", __func__, __LINE__);
-            return -1;
-        }
-
-        if (write_to_client(req, req->resp.s.c_str(), req->resp.s.size(), conf->Timeout) < 0)
-        {
-            print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
-            req->req_hd.iReferer = MAX_HEADERS - 1;
-            req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
-            return -1;
-        }
-    }
-    else
-        req->send_bytes = req->respContentLength;
-
-    return 0;
+    return r->respContentLength;
 }
 //======================================================================
-int index_dir(Connect *req, string& path)
+int index_dir(Connect *r)
 {
     DIR *dir;
     struct dirent *dirbuf;
@@ -260,7 +174,12 @@ int index_dir(Connect *req, string& path)
     char *list[maxNumFiles];
     int ret;
 
-    path += '/';
+    string path;
+    path.reserve(1 + r->lenDecodeUri + 16);
+    path += '.';
+    path += r->decodeUri;
+    if (path[path.size()-1] != '/')
+        path += '/';
 
     dir = opendir(path.c_str());
     if (dir == NULL)
@@ -269,7 +188,7 @@ int index_dir(Connect *req, string& path)
             return -RS403;
         else
         {
-            print_err(req, "<%s:%d>  Error opendir(\"%s\"): %s\n", __func__, __LINE__, path.c_str(), strerror(errno));
+            print_err(r, "<%s:%d>  Error opendir(\"%s\"): %s\n", __func__, __LINE__, path.c_str(), strerror(errno));
             return -RS500;
         }
     }
@@ -278,7 +197,7 @@ int index_dir(Connect *req, string& path)
     {
         if (numFiles >= maxNumFiles )
         {
-            print_err(req, "<%s:%d> number of files per directory >= %d\n", __func__, __LINE__, numFiles);
+            print_err(r, "<%s:%d> number of files per directory >= %d\n", __func__, __LINE__, numFiles);
             break;
         }
 
@@ -289,9 +208,138 @@ int index_dir(Connect *req, string& path)
     }
 
     qsort(list, numFiles, sizeof(char *), cmp);
-    ret = index_chunked(req, list, numFiles, path);
-
+    ret = create_index_html(r, list, numFiles, path);
     closedir(dir);
+    if (ret >= 0)
+    {
+        r->resp_headers.p = r->resp_headers.s.c_str();
+        r->resp_headers.len = r->resp_headers.s.size();
+    }
 
     return ret;
 }
+//======================================================================
+extern struct pollfd *cgi_poll_fd;
+
+int cgi_set_size_chunk(Connect *r);
+void cgi_del_from_list(Connect *r);
+//======================================================================
+void index_set_poll_list(Connect *r, int *i)
+{
+    if (r->operation == INDEX)
+    {
+        r->hdrs.reserve(64);
+        r->hdrs << "Content-Type: text/html\r\n";
+        r->respContentLength = -1;
+        r->mode_send = ((r->httpProt == HTTP11) && r->connKeepAlive) ? CHUNK : NO_CHUNK;
+        if (create_response_headers(r))
+        {
+            print_err(r, "<%s:%d> Error create_response_headers()\n", __func__, __LINE__);
+            r->err = -1;
+            cgi_del_from_list(r);
+            end_response(r);
+            return;
+        }
+        else
+        {
+            r->resp_headers.p = r->resp_headers.s.c_str();
+            r->resp_headers.len = r->resp_headers.s.size();
+            r->operation = SEND_RESP_HEADERS;
+            r->cgi->dir = IN;
+        }
+    }
+    else if (r->operation == SEND_RESP_HEADERS)
+    {
+        if (r->resp_headers.len == 0)
+        {
+            r->resp_headers.s = "";
+            int ret = index_dir(r);
+            if (ret == 0)
+            {
+                cgi_del_from_list(r);
+                end_response(r);
+                return;
+            }
+            else if (ret < 0)
+            {
+                r->err = -1;
+                cgi_del_from_list(r);
+                end_response(r);
+                return;
+            }
+
+            r->operation = SEND_ENTITY;
+            r->cgi->dir = IN;
+        }
+    }
+    else if (r->operation == SEND_ENTITY)
+    {
+        if (r->resp_headers.len == 0)
+        {
+            if (r->mode_send == CHUNK)
+            {
+                r->cgi->len_buf = 0;
+                cgi_set_size_chunk(r);
+                r->cgi->dir = OUT;
+                r->mode_send = CHUNK_END;
+            }
+            else
+            {
+                cgi_del_from_list(r);
+                end_response(r);
+                return;
+            }
+        }
+    }
+
+    cgi_poll_fd[*i].fd = r->clientSocket;
+    cgi_poll_fd[*i].events = POLLOUT;
+    (*i)++;
+}
+//----------------------------------------------------------------------
+int index_(Connect *r)
+{
+    if (r->cgi->dir == IN)
+    {
+        int len = (r->resp_headers.len > r->cgi->size_buf) ? r->cgi->size_buf : r->resp_headers.len;
+        memcpy(r->cgi->buf + 8, r->resp_headers.p, len);
+        r->resp_headers.p += len;
+        r->resp_headers.len -= len;
+        
+        r->cgi->len_buf = len;
+        if ((r->mode_send == CHUNK) && (r->operation == SEND_ENTITY))
+        {
+            if (cgi_set_size_chunk(r))
+            {
+                r->err = -1;
+                cgi_del_from_list(r);
+                end_response(r);
+                return -1;
+            }
+        }
+        else
+            r->cgi->p = r->cgi->buf + 8;
+        r->cgi->dir = OUT;
+    }
+
+    int ret = write(r->clientSocket, r->cgi->p, r->cgi->len_buf);
+    if (ret == -1)
+    {
+        print_err(r, "<%s:%d> Error send to client: %s\n", __func__, __LINE__, strerror(errno));
+        if (errno == EAGAIN)
+            return -EAGAIN;
+        return -1;
+    }
+
+    r->cgi->p += ret;
+    r->cgi->len_buf -= ret;
+    r->send_bytes += ret;
+
+    if (r->cgi->len_buf == 0)
+        r->cgi->dir = IN;
+    else
+        r->cgi->dir = OUT;
+        
+    return ret;
+}
+

@@ -110,11 +110,24 @@ int create_fcgi_socket(const char *host)
             return -1;
         }
 
+        int flags = fcntl(sockfd, F_GETFL);
+        if (flags == -1)
+            print_err("<%s:%d> Error fcntl(, F_GETFL, ): %s\n", __func__, __LINE__, strerror(errno));
+        else
+        {
+            flags |= O_NONBLOCK;
+            if (fcntl(sockfd, F_SETFL, flags) == -1)
+                print_err("<%s:%d> Error fcntl(, F_SETFL, ): %s\n", __func__, __LINE__, strerror(errno));
+        }
+
         if (connect(sockfd, (struct sockaddr *)(&sock_addr), sizeof(sock_addr)) != 0)
         {
-            print_err("<%s:%d> Error connect(%s): %s\n", __func__, __LINE__, host, strerror(errno));
-            close(sockfd);
-            return -1;
+            if (errno != EINPROGRESS)
+            {
+                print_err("<%s:%d> Error connect(%s): %s\n", __func__, __LINE__, host, strerror(errno));
+                close(sockfd);
+                return -1;
+            }
         }
     }
     else //==== PF_UNIX ====
@@ -130,22 +143,25 @@ int create_fcgi_socket(const char *host)
         sock_addr.sun_family = AF_UNIX;
         strcpy (sock_addr.sun_path, host);
 
+        int flags = fcntl(sockfd, F_GETFL);
+        if (flags == -1)
+        print_err("<%s:%d> Error fcntl(, F_GETFL, ): %s\n", __func__, __LINE__, strerror(errno));
+        else
+        {
+            flags |= O_NONBLOCK;
+            if (fcntl(sockfd, F_SETFL, flags) == -1)
+                print_err("<%s:%d> Error fcntl(, F_SETFL, ): %s\n", __func__, __LINE__, strerror(errno));
+        }
+
         if (connect (sockfd, (struct sockaddr *) &sock_addr, SUN_LEN(&sock_addr)) == -1)
         {
-            print_err("<%s:%d> Error connect(%s): %s\n", __func__, __LINE__, host, strerror(errno));
-            close(sockfd);
-            return -1;
+            if (errno != EINPROGRESS)
+            {
+                print_err("<%s:%d> Error connect(%s): %s\n", __func__, __LINE__, host, strerror(errno));
+                close(sockfd);
+                return -1;
+            }
         }
-    }
-
-    int flags = fcntl(sockfd, F_GETFL);
-    if (flags == -1)
-        print_err("<%s:%d> Error fcntl(, F_GETFL, ): %s\n", __func__, __LINE__, strerror(errno));
-    else
-    {
-        flags |= O_NONBLOCK;
-        if (fcntl(sockfd, F_SETFL, flags) == -1)
-            print_err("<%s:%d> Error fcntl(, F_SETFL, ): %s\n", __func__, __LINE__, strerror(errno));
     }
 
     return sockfd;

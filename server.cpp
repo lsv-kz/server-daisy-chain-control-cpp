@@ -263,7 +263,7 @@ int main(int argc, char *argv[])
 
             if (kill(pid, sig_send))
             {
-                fprintf(stderr, "<%d> Error kill(pid=%u, sig=%u): %s\n", __LINE__, pid, sig_send, strerror(errno));
+                fprintf(stderr, "<%s:%d> Error kill(pid=%u, sig=%u): %s\n", __func__, __LINE__, pid, sig_send, strerror(errno));
                 return 1;
             }
 
@@ -404,7 +404,7 @@ int main_proc()
     {
         if ((ret = read(pfd_in, &status, sizeof(status))) <= 0)
         {
-            print_err("<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
+            print_err("<%s:%d> Error read(): %s\n", __func__, __LINE__, ret < 0 ? strerror(errno) : "Pipe closed");
             break;
         }
 

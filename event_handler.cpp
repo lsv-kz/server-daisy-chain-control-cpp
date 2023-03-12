@@ -152,7 +152,7 @@ static void del_from_list(Connect *r)
         work_list_start = work_list_end = NULL;
 }
 //======================================================================
-int set_list()
+static void set_work_list()
 {
 mtx_.lock();
     if (wait_list_start)
@@ -167,29 +167,30 @@ mtx_.lock();
         wait_list_start = wait_list_end = NULL;
     }
 mtx_.unlock();
-
+}
+//======================================================================
+static int set_poll()
+{
     int i = 0;
     time_t t = time(NULL);
     Connect *r = work_list_start, *next = NULL;
-
     for ( ; r; r = next)
     {
         next = r->next;
 
         if (((t - r->sock_timer) >= r->timeout) && (r->sock_timer != 0))
         {
-            if (r->lenBufReq)
+            print_err(r, "<%s:%d> operation=%d, Timeout = %ld\n", __func__, __LINE__, r->operation, t - r->sock_timer);
+            del_from_list(r);
+            if (r->operation != READ_REQUEST)
             {
                 r->err = -1;
-                print_err(r, "<%s:%d> Timeout = %ld\n", __func__, __LINE__, t - r->sock_timer);
                 r->req_hd.iReferer = MAX_HEADERS - 1;
                 r->reqHdValue[r->req_hd.iReferer] = "Timeout";
+                end_response(r);
             }
             else
-                r->err = NO_PRINT_LOG;
-
-            del_from_list(r);
-            end_response(r);
+                close_connect(r);
         }
         else
         {
@@ -205,7 +206,7 @@ mtx_.unlock();
     return i;
 }
 //======================================================================
-int poll_(int num_chld, int nfd, RequestManager *ReqMan)
+static int poll_(int num_chld, int nfd, RequestManager *ReqMan)
 {
     int ret = poll(poll_fd, nfd, conf->TimeoutPoll);
     if (ret == -1)
@@ -217,134 +218,154 @@ int poll_(int num_chld, int nfd, RequestManager *ReqMan)
         return 0;
 
     Connect *r = work_list_start, *next;
-    for ( int i = 0; (i < nfd) && (ret > 0) && r; r = next, ++i)
+    int i = 0;
+    for ( ; (i < nfd) && (ret > 0) && r; r = next, ++i)
     {
         next = r->next;
         if (poll_fd[i].revents == POLLOUT)
         {
-            if (r->status == SEND_ENTITY)
+            r->poll_status = WORK;
+            --ret;
+        }
+        else if (poll_fd[i].revents & POLLIN)
+        {
+            r->poll_status = WORK;
+            --ret;
+        }
+        else if (poll_fd[i].revents)
+        {
+            --ret;
+            //print_err(r, "<%s:%d> Error: events=0x%x(0x%x)\n", __func__, __LINE__, poll_fd[i].events, poll_fd[i].revents);
+            del_from_list(r);
+            if (r->operation != READ_REQUEST)
             {
-                int wr = send_part_file(r);
-                if (wr == 0)
+                r->req_hd.iReferer = MAX_HEADERS - 1;
+                r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+                r->err = -1;
+                end_response(r);
+            }
+            else
+                close_connect(r);
+        }
+        else
+            r->poll_status = WAIT;
+    }
+
+    return i;
+}
+//======================================================================
+static void worker(int num_chld, int npoll, RequestManager *ReqMan)
+{
+    Connect *r = work_list_start, *next;
+    for ( ; (npoll > 0) && r; r = next, --npoll)
+    {
+        next = r->next;
+        if (r->poll_status == WAIT)
+            continue;
+        if (r->operation == SEND_ENTITY)
+        {
+            int wr = send_part_file(r);
+            if (wr == 0)
+            {
+                del_from_list(r);
+                end_response(r);
+            }
+            else if (wr == -EAGAIN)
+            {
+                //print_err(r, "<%s:%d> Error SEND_ENTITY: EAGAIN\n", __func__, __LINE__);
+                r->sock_timer = 0;
+            }
+            else if (wr < 0)
+            {
+                r->err = wr;
+                r->req_hd.iReferer = MAX_HEADERS - 1;
+                r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+
+                del_from_list(r);
+                end_response(r);
+            }
+            else // (wr > 0)
+                r->sock_timer = 0;
+        }
+        else if (r->operation == SEND_RESP_HEADERS)
+        {
+            if (r->resp_headers.len > 0)
+            {
+                int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
+                if (wr == -EAGAIN)
                 {
-                    del_from_list(r);
-                    end_response(r);
+                    //print_err(r, "<%s:%d> Error SEND_RESP_HEADERS: EAGAIN\n", __func__, __LINE__);
+                    r->sock_timer = 0;
                 }
-                else if (wr == -1)
+                else if (wr < 0)
                 {
-                    r->err = wr;
+                    r->err = -1;
                     r->req_hd.iReferer = MAX_HEADERS - 1;
                     r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
 
                     del_from_list(r);
                     end_response(r);
                 }
-                else if (wr > 0)
-                    r->sock_timer = 0;
-                else if (wr == -EAGAIN)
+                else
                 {
-                    r->sock_timer = 0;
-                    //print_err(r, "<%s:%d> Error: EAGAIN\n", __func__, __LINE__);
-                }
-            }
-            else if (r->status == SEND_RESP_HEADERS)
-            {
-                if (r->resp.len > 0)
-                {
-                    int wr = send(r->clientSocket, r->resp.p, r->resp.len, 0);
-                    if (wr == -1)
+                    r->resp_headers.p += wr;
+                    r->resp_headers.len -= wr;
+                    if (r->resp_headers.len == 0)
                     {
-                        if (errno == EAGAIN)
-                            r->sock_timer = 0;
-                        else
+                        if (r->reqMethod == M_HEAD)
                         {
-                            r->err = -1;
-                            r->req_hd.iReferer = MAX_HEADERS - 1;
-                            r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-
                             del_from_list(r);
                             end_response(r);
                         }
+                        else
+                        {
+                            r->operation = SEND_ENTITY;
+                            r->sock_timer = 0;
+                        }
                     }
                     else
-                    {
-                        r->resp.p += wr;
-                        r->resp.len -= wr;
-                        if (r->resp.len == 0)
-                        {
-                            if (r->reqMethod != M_HEAD)
-                                r->status = SEND_ENTITY;
-                            else
-                            {
-                                del_from_list(r);
-                                end_response(r);
-                            }
-                        }
-                        else
-                            r->sock_timer = 0;
-                    }
-                }
-                else
-                {
-                    print_err(r, "<%s:%d> Error resp.len=%d\n", __func__, __LINE__, r->resp.len);
-                    r->err = -1;
-                    r->req_hd.iReferer = MAX_HEADERS - 1;
-                    r->reqHdValue[r->req_hd.iReferer] = "Error send response headers";
-
-                    del_from_list(r);
-                    end_response(r);
+                        r->sock_timer = 0;
                 }
             }
-            --ret;
+            else
+            {
+                print_err(r, "<%s:%d> Error resp.len=%d\n", __func__, __LINE__, r->resp_headers.len);
+                r->err = -1;
+                r->req_hd.iReferer = MAX_HEADERS - 1;
+                r->reqHdValue[r->req_hd.iReferer] = "Error send response headers";
+
+                del_from_list(r);
+                end_response(r);
+            }
         }
-        else if (poll_fd[i].revents & POLLIN)
+        else if (r->operation == READ_REQUEST)
         {
-            int rd = r->hd_read();
+            int rd = hd_read(r);
             if (rd == -EAGAIN)
             {
-                print_err(r, "<%s:%d> Error hd_read(): EAGAIN\n", __func__, __LINE__);
+                //print_err(r, "<%s:%d> Error hd_read(): EAGAIN\n", __func__, __LINE__);
                 r->sock_timer = 0;
             }
             else if (rd < 0)
             {
-                r->err = rd;
                 del_from_list(r);
-                end_response(r);
+                close_connect(r);
             }
             else if (rd > 0)
             {
+                r->operation = SEND_RESP_HEADERS;
                 del_from_list(r);
                 push_resp_list(r, ReqMan);
             }
             else // rd == 0
                 r->sock_timer = 0;
-            --ret;
-        }
-        else if (poll_fd[i].revents)
-        {
-            print_err(r, "<%s:%d> Error: events=0x%x, revents=0x%x\n", __func__, __LINE__, poll_fd[i].events, poll_fd[i].revents);
-            if (r->event == POLLOUT)
-            {
-                r->req_hd.iReferer = MAX_HEADERS - 1;
-                r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-                r->err = -1;
-            }
-            else
-                r->err = NO_PRINT_LOG;
-
-            del_from_list(r);
-            end_response(r);
-            --ret;
         }
     }
-
-    return 1;
 }
 //======================================================================
 void event_handler(RequestManager *ReqMan)
 {
     int num_chld = ReqMan->get_num_chld();
-    int count_resp = 0;
     size_buf = conf->SndBufSize;
     snd_buf = NULL;
 
@@ -380,15 +401,13 @@ void event_handler(RequestManager *ReqMan)
                 break;
         }
 
-        count_resp = set_list();
-        if (count_resp == 0)
-            continue;
-
-        int ret = poll_(num_chld, count_resp, ReqMan);
-        if (ret < 0)
+        set_work_list();
+        int size_poll_list = set_poll();
+        if (size_poll_list > 0)
         {
-            print_err("[%d]<%s:%d> Error poll_()\n", num_chld, __func__, __LINE__);
-            continue;
+            int npoll = poll_(num_chld, size_poll_list, ReqMan);
+            if (npoll > 0)
+                worker(num_chld, npoll, ReqMan);
         }
     }
 
@@ -403,12 +422,12 @@ void event_handler(RequestManager *ReqMan)
 //======================================================================
 void push_pollout_list(Connect *req)
 {
-    req->event = POLLOUT;
     lseek(req->fd, req->offset, SEEK_SET);
+    req->resp_headers.p = req->resp_headers.s.c_str();
+    req->resp_headers.len = req->resp_headers.s.size();
+
+    req->event = POLLOUT;
     req->sock_timer = 0;
-    req->status = SEND_RESP_HEADERS;
-    req->resp.p = req->resp.s.c_str();
-    req->resp.len = req->resp.s.size();
     req->next = NULL;
 mtx_.lock();
     req->prev = wait_list_end;
@@ -427,7 +446,6 @@ void push_pollin_list(Connect *req)
 {
     req->event = POLLIN;
     req->sock_timer = 0;
-    req->status = READ_REQUEST;
     req->next = NULL;
 mtx_.lock();
     req->prev = wait_list_end;

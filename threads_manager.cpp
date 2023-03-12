@@ -158,28 +158,37 @@ unique_lock<mutex> lk(mtx_conn);
     }
 }
 //======================================================================
+void close_connect(Connect *req)
+{
+    shutdown(req->clientSocket, SHUT_RDWR);
+    int err = close(req->clientSocket);
+    if (err)
+        print_err(req, "<%s:%d> Error close(): %s\n", __func__, __LINE__, strerror(errno));
+    delete req;
+
+mtx_conn.lock();
+    --num_conn;
+mtx_conn.unlock();
+    cond_close_conn.notify_all();
+}
+//======================================================================
 void end_response(Connect *req)
 {
     if (req->connKeepAlive == 0 || req->err < 0)
     { // ----- Close connect -----
-        if (req->err > NO_PRINT_LOG)// 0 > err > NO_PRINT_LOG(-1000)
+        if (req->err <= -RS101) // err < -100
         {
-            if (req->err <= -RS101)// -1 > err > NO_PRINT_LOG(-1000)
-            {
-                req->respStatus = -req->err;
-                send_message(req, NULL, NULL);
-            }
+            req->respStatus = -req->err;
+            req->hdrs = "";
+            send_message(req, NULL);
+        }
+
+        if (req->operation != READ_REQUEST)
+        {
             print_log(req);
         }
 
-        shutdown(req->clientSocket, SHUT_RDWR);
-        close(req->clientSocket);
-        delete req;
-
-    mtx_conn.lock();
-        --num_conn;
-    mtx_conn.unlock();
-        cond_close_conn.notify_all();
+        close_connect(req);
     }
     else
     { // ----- KeepAlive -----
@@ -199,6 +208,7 @@ void end_response(Connect *req)
         req->init();
         req->timeout = conf->TimeoutKeepAlive;
         ++req->numReq;
+        req->operation = READ_REQUEST;
         push_pollin_list(req);
     }
 }
@@ -237,7 +247,7 @@ static void signal_handler_child(int sig)
 {
     if (sig == SIGINT)
     {
-        print_err("[%d] <%s:%d> ### SIGINT ### all_conn=%d, all_req=%d\n", nProc, __func__, __LINE__, allConn, all_req);
+        print_err("[%d] <%s:%d> ### SIGINT ### all_conn=%lu, open_conn=%d, all_req=%d\n", nProc, __func__, __LINE__, allConn, num_conn, all_req);
     }
     else if (sig == SIGTERM)
     {
@@ -310,6 +320,17 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
         exit(EXIT_FAILURE);
     }
     //------------------------------------------------------------------
+    thread CgiHandler;
+    try
+    {
+        CgiHandler = thread(cgi_handler, ReqMan);
+    }
+    catch (...)
+    {
+        print_err("[%d] <%s:%d> Error create thread(cgi_handler): errno=%d\n", numProc, __func__, __LINE__, errno);
+        exit(errno);
+    }
+    //------------------------------------------------------------------
     thread EventHandler;
     try
     {
@@ -317,7 +338,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
     }
     catch (...)
     {
-        print_err("[%d] <%s:%d> Error create thread(send_file_): errno=%d\n", numProc, __func__, __LINE__, errno);
+        print_err("[%d] <%s:%d> Error create thread(event_handler): errno=%d\n", numProc, __func__, __LINE__, errno);
         exit(errno);
     }
     //------------------------------------------------------------------
@@ -452,7 +473,9 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             req->numReq = 1;
             req->serverSocket = sockServer;
             req->clientSocket = clientSocket;
+            get_time(req->sTime);
             req->timeout = conf->Timeout;
+
             if (getnameinfo((struct sockaddr *)&clientAddr,
                     addrSize,
                     req->remoteAddr,
@@ -465,6 +488,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
                 req->remoteAddr[0] = 0;
             }
 
+            req->operation = READ_REQUEST;
             start_conn();
             push_pollin_list(req);
         }
@@ -494,9 +518,11 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
 
     ReqMan->close_manager();
     close_event_handler();
+    close_cgi_handler();
 
     thrReqMan.join();
     EventHandler.join();
+    CgiHandler.join();
 
     usleep(100000);
     close(fd_out);

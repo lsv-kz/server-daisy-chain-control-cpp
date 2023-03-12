@@ -38,12 +38,14 @@ class String
     //------------------------------------------------------------------
     void append(const char *s)
     {
-        buf += s;
+        if (s)
+            buf += s;
     }
     //------------------------------------------------------------------
     void append(char *s)
     {
-        buf += s;
+        if (s)
+            buf += s;
     }
     //------------------------------------------------------------------
     void append(std::string& arg)
@@ -131,7 +133,9 @@ class String
 public:
     String(){}
     explicit String(unsigned int n) { buf.reserve(n); }
-    String(const String&) = delete;
+    //String(const String&) = delete;
+
+    String(const std::string& s) { buf = s; }
 
     String & operator >> (double&) = delete;
     String& operator >> (char*) = delete;
@@ -150,8 +154,11 @@ public:
     //------------------------------------------------------------------
     String & operator = (const char *s)
     {
-        buf.clear();
-        buf += s;
+        if (s)
+        {
+            buf.clear();
+            buf += s;
+        }
         return *this;
     }
     //------------------------------------------------------------------

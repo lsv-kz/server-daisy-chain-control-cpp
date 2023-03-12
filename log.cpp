@@ -81,14 +81,14 @@ void print_log(Connect *req)
     String ss(320);
     if (req->reqMethod <= 0)
     {
-        ss  << req->numProc << "/" << req->numConn << "/" << req->numReq << " - " << req->remoteAddr
+        ss  << req->numProc << "/" << req->numConn << "/" << req->numReq << " - " << req->remoteAddr << ":" << req->remotePort
             << " - [" << log_time() << "] - \"-\" "
             << req->respStatus << " " << req->send_bytes
             << " \"" << ((req->req_hd.iReferer >= 0) ? req->reqHdValue[req->req_hd.iReferer] : "-") << "\" \"-\"\n";
     }
     else
     {
-        ss  << req->numProc << "/" << req->numConn << "/" << req->numReq << " - " << req->remoteAddr
+        ss  << req->numProc << "/" << req->numConn << "/" << req->numReq << " - " << req->remoteAddr << ":" << req->remotePort
             << " - [" << log_time() << "] - \"" << get_str_method(req->reqMethod) << " " << req->decodeUri
             << ((req->sReqParam) ? "?" : "") << ((req->sReqParam) ? req->sReqParam : "") << " "
             << get_str_http_prot(req->httpProt) << "\" "

@@ -7,7 +7,9 @@ OBJSDIR = objs
 $(shell mkdir -p $(OBJSDIR))
 
 OBJS = $(OBJSDIR)/server.o \
+	$(OBJSDIR)/cgi.o \
 	$(OBJSDIR)/scgi.o \
+	$(OBJSDIR)/fcgi.o \
 	$(OBJSDIR)/classes.o \
 	$(OBJSDIR)/send_headers.o \
 	$(OBJSDIR)/config.o \
@@ -19,8 +21,6 @@ OBJS = $(OBJSDIR)/server.o \
 	$(OBJSDIR)/rd_wr.o \
 	$(OBJSDIR)/functions.o \
 	$(OBJSDIR)/log.o \
-	$(OBJSDIR)/cgi.o \
-	$(OBJSDIR)/fcgi.o \
 	$(OBJSDIR)/index.o \
 
 server: $(OBJS)
@@ -29,7 +29,13 @@ server: $(OBJS)
 $(OBJSDIR)/server.o: server.cpp main.h string__.h
 	$(CC) $(CFLAGS) -c server.cpp -o $@
 
-$(OBJSDIR)/scgi.o: scgi.cpp main.h string__.h scgi.h
+$(OBJSDIR)/cgi.o: cgi.cpp main.h classes.h string__.h
+	$(CC) $(CFLAGS) -c cgi.cpp -o $@
+
+$(OBJSDIR)/fcgi.o: fcgi.cpp main.h classes.h string__.h
+	$(CC) $(CFLAGS) -c fcgi.cpp -o $@
+
+$(OBJSDIR)/scgi.o: scgi.cpp main.h string__.h
 	$(CC) $(CFLAGS) -c scgi.cpp -o $@
 
 $(OBJSDIR)/classes.o: classes.cpp main.h classes.h string__.h
@@ -64,12 +70,6 @@ $(OBJSDIR)/functions.o: functions.cpp main.h string__.h
 
 $(OBJSDIR)/log.o: log.cpp main.h string__.h
 	$(CC) $(CFLAGS) -c log.cpp -o $@
-
-$(OBJSDIR)/cgi.o: cgi.cpp main.h classes.h string__.h
-	$(CC) $(CFLAGS) -c cgi.cpp -o $@
-
-$(OBJSDIR)/fcgi.o: fcgi.cpp main.h classes.h fcgi.h string__.h
-	$(CC) $(CFLAGS) -c fcgi.cpp -o $@
 
 $(OBJSDIR)/index.o: index.cpp main.h classes.h string__.h
 	$(CC) $(CFLAGS) -c index.cpp -o $@

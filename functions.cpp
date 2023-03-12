@@ -125,16 +125,20 @@ int get_int_method(const char *s)
 //======================================================================
 const char *get_str_method(int i)
 {
-    if (i == M_GET)
-        return "GET";
-    else if (i == M_POST)
-        return "POST";
-    else if (i == M_HEAD)
-        return "HEAD";
-    else if (i == M_OPTIONS)
-        return "OPTIONS";
-    else if (i == M_CONNECT)
-        return "CONNECT";
+    switch (i)
+    {
+        case M_GET:
+            return "GET";
+        case M_POST:
+            return "POST";
+        case M_HEAD:
+            return "HEAD";
+        case M_OPTIONS:
+            return "OPTIONS";
+        case M_CONNECT:
+            return "CONNECT";
+    }
+
     return "";
 }
 //======================================================================
@@ -154,14 +158,16 @@ int get_int_http_prot(const char *s)
 //======================================================================
 const char *get_str_http_prot(int i)
 {
-    if (i == HTTP11)
-        return "HTTP/1.1";
-    else if (i == HTTP10)
+    switch (i)
+    {
+        case HTTP11:
+            return "HTTP/1.1";
+        case HTTP10:
             return "HTTP/1.0";
-    else if (i == HTTP09)
+        case HTTP09:
             return "HTTP/0.9";
-    else if (i == HTTP2)
-            return "HTTP/2";
+    }
+
     return "";
 }
 //======================================================================

@@ -130,13 +130,13 @@ int fcgi_create_connect(Connect *req)
         }
     }
 
-    if (req->scriptType == PHPFPM)
+    if (req->cgi_type == PHPFPM)
         req->fcgi.fd = create_fcgi_socket(conf->PathPHP.c_str());
-    else if (req->scriptType == FASTCGI)
+    else if (req->cgi_type == FASTCGI)
         req->fcgi.fd = get_sock_fcgi(req, req->scriptName);
     else
     {
-        print_err(req, "<%s:%d> ? req->scriptType=%d\n", __func__, __LINE__, req->scriptType);
+        print_err(req, "<%s:%d> ? req->scriptType=%d\n", __func__, __LINE__, req->cgi_type);
         return -RS500;
     }
 
@@ -154,7 +154,7 @@ static void fcgi_create_param(Connect *req)
     Param param;
     req->fcgi.vPar.clear();
 
-    if (req->scriptType == PHPFPM)
+    if (req->cgi_type == PHPFPM)
     {
         param.name = "REDIRECT_STATUS";
         param.val = "true";
@@ -264,7 +264,7 @@ static void fcgi_create_param(Connect *req)
     req->fcgi.vPar.push_back(param);
     ++i;
 
-    if (req->scriptType == PHPFPM)
+    if (req->cgi_type == PHPFPM)
     {
         String s;
         s << conf->DocumentRoot << req->scriptName;
@@ -1055,18 +1055,18 @@ void fcgi_(Connect* r)
             if (r->resp_headers.len > 0)
             {
                 int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
-                if (wr == -EAGAIN)
+                if (wr < 0)
                 {
-                    r->sock_timer = 0;
-                }
-                else if (wr < 0)
-                {
-                    r->err = -1;
-                    r->req_hd.iReferer = MAX_HEADERS - 1;
-                    r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-
-                    cgi_del_from_list(r);
-                    end_response(r);
+                    if (errno == EAGAIN)
+                        r->sock_timer = 0;
+                    else
+                    {
+                        r->err = -1;
+                        r->req_hd.iReferer = MAX_HEADERS - 1;
+                        r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+                        cgi_del_from_list(r);
+                        end_response(r);
+                    }
                 }
                 else
                 {

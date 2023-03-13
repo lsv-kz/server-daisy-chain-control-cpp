@@ -154,9 +154,9 @@ int fastcgi(Connect* req, const char* uri)
         return -RS404;
 
     if (i->type == FASTCGI)
-        req->scriptType = FASTCGI;
+        req->cgi_type = FASTCGI;
     else if (i->type == SCGI)
-        req->scriptType = SCGI;
+        req->cgi_type = SCGI;
     else
         return -RS404;
 
@@ -188,14 +188,14 @@ int response2(Connect *req)
         if (conf->UsePHP == "php-fpm")
         {
             req->scriptName = req->decodeUri;
-            req->scriptType = PHPFPM;
+            req->cgi_type = PHPFPM;
             push_cgi(req);
             return 1;
         }
         else if (conf->UsePHP == "php-cgi")
         {
             req->scriptName = req->decodeUri;
-            req->scriptType = PHPCGI;
+            req->cgi_type = PHPCGI;
             push_cgi(req);
             return 1;
         }
@@ -206,7 +206,7 @@ int response2(Connect *req)
 
     if (!strncmp(req->decodeUri, "/cgi-bin/", 9) || !strncmp(req->decodeUri, "/cgi/", 5))
     {
-        req->scriptType = CGI;
+        req->cgi_type = CGI;
         req->scriptName = req->decodeUri;
         push_cgi(req);
         return 1;
@@ -264,8 +264,7 @@ int response2(Connect *req)
                 return -RS500;
             }
 
-            send_message(req, s.c_str());
-            return 0;
+            return send_message(req, s.c_str());
         }
         //--------------------------------------------------------------
         int len = path.size();
@@ -286,13 +285,13 @@ int response2(Connect *req)
 
                     if (conf->UsePHP == "php-fpm")
                     {
-                        req->scriptType = PHPFPM;
+                        req->cgi_type = PHPFPM;
                         push_cgi(req);
                         return 1;
                     }
                     else if (conf->UsePHP == "php-cgi")
                     {
-                        req->scriptType = PHPCGI;
+                        req->cgi_type = PHPCGI;
                         push_cgi(req);
                         return 1;
                     }
@@ -305,14 +304,14 @@ int response2(Connect *req)
 
             if (conf->index_pl == 'y')
             {
-                req->scriptType = CGI;
+                req->cgi_type = CGI;
                 req->scriptName = "/cgi-bin/index.pl";
                 push_cgi(req);
                 return 1;
             }
             else if (conf->index_fcgi == 'y')
             {
-                req->scriptType = FASTCGI;
+                req->cgi_type = FASTCGI;
                 req->scriptName = "/index.fcgi";
                 push_cgi(req);
                 return 1;
@@ -321,9 +320,7 @@ int response2(Connect *req)
             path.reserve(path.capacity() + 256);
             if (conf->AutoIndex == 'y')
             {
-                req->scriptType = NONE;
-                push_index(req);
-                return 1;
+                return index_dir(req, path);
             }
             else
                 return -RS403;

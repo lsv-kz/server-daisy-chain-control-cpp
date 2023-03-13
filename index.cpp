@@ -70,8 +70,9 @@ int create_index_html(Connect *r, char **list, int numFiles, string& path)
 
     if (r->reqMethod == M_HEAD)
         return 0;
+    r->html.s = "";
     //------------------------------------------------------------------
-    r->resp_headers.s << "<!DOCTYPE HTML>\r\n"
+    r->html.s << "<!DOCTYPE HTML>\r\n"
             "<html>\r\n"
             " <head>\r\n"
             "  <meta charset=\"UTF-8\">\r\n"
@@ -89,9 +90,9 @@ int create_index_html(Connect *r, char **list, int numFiles, string& path)
             "   <tr><td><h3>Directories</h3></td></tr>\r\n";
     //------------------------------------------------------------------
     if (!strcmp(r->decodeUri, "/"))
-        r->resp_headers.s << "   <tr><td></td></tr>\r\n";
+        r->html.s << "   <tr><td></td></tr>\r\n";
     else
-        r->resp_headers.s << "   <tr><td><a href=\"../\">Parent Directory/</a></td></tr>\r\n";
+        r->html.s << "   <tr><td><a href=\"../\">Parent Directory/</a></td></tr>\r\n";
     //-------------------------- Directories ---------------------------
     for (i = 0; (i < numFiles); i++)
     {
@@ -108,10 +109,10 @@ int create_index_html(Connect *r, char **list, int numFiles, string& path)
             continue;
         }
 
-        r->resp_headers.s << "   <tr><td><a href=\"" << buf << "/\">" << list[i] << "/</a></td></tr>\r\n";
+        r->html.s << "   <tr><td><a href=\"" << buf << "/\">" << list[i] << "/</a></td></tr>\r\n";
     }
     //------------------------------------------------------------------
-    r->resp_headers.s << "  </table>\r\n   <hr>\r\n  <table border=\"0\" width=\"100\%\">\r\n"
+    r->html.s << "  </table>\r\n   <hr>\r\n  <table border=\"0\" width=\"100\%\">\r\n"
                 "   <tr><td><h3>Files</h3></td><td></td></tr>\r\n";
     //---------------------------- Files -------------------------------
     for (i = 0; i < numFiles; i++)
@@ -134,17 +135,17 @@ int create_index_html(Connect *r, char **list, int numFiles, string& path)
         size = (long long)st.st_size;
 
         if (isimage(list[i]) && (conf->ShowMediaFiles == 'y'))
-            r->resp_headers.s << "   <tr><td><a href=\"" << buf << "\"><img src=\"" << buf << "\" width=\"100\"></a>" << list[i] << "</td>"
+            r->html.s << "   <tr><td><a href=\"" << buf << "\"><img src=\"" << buf << "\" width=\"100\"></a>" << list[i] << "</td>"
                       << "<td align=\"right\">" << size << " bytes</td></tr>\r\n";
         else if (isaudiofile(list[i]) && (conf->ShowMediaFiles == 'y'))
-            r->resp_headers.s << "   <tr><td><audio preload=\"none\" controls src=\"" << buf << "\"></audio><a href=\""
+            r->html.s << "   <tr><td><audio preload=\"none\" controls src=\"" << buf << "\"></audio><a href=\""
                       << buf << "\">" << list[i] << "</a></td><td align=\"right\">" << size << " bytes</td></tr>\r\n";
         else
-            r->resp_headers.s << "   <tr><td><a href=\"" << buf << "\">" << list[i] << "</a></td><td align=\"right\">"
+            r->html.s << "   <tr><td><a href=\"" << buf << "\">" << list[i] << "</a></td><td align=\"right\">"
                       << size << " bytes</td></tr>\r\n";
     }
     //------------------------------------------------------------------
-    r->resp_headers.s << "  </table>\r\n"
+    r->html.s << "  </table>\r\n"
               "  <hr>\r\n"
               "  " << r->sTime << "\r\n"
               "  <a href=\"#top\" style=\"display:block;\r\n"
@@ -161,12 +162,13 @@ int create_index_html(Connect *r, char **list, int numFiles, string& path)
               " </body>\r\n"
               "</html>";
     //------------------------------------------------------------------
-    r->respContentLength = r->resp_headers.s.size();
+    r->respContentLength = r->html.s.size();
+    r->respContentType = "text/html";
 
     return r->respContentLength;
 }
 //======================================================================
-int index_dir(Connect *r)
+int index_dir(Connect *r, string& path)
 {
     DIR *dir;
     struct dirent *dirbuf;
@@ -174,12 +176,7 @@ int index_dir(Connect *r)
     char *list[maxNumFiles];
     int ret;
 
-    string path;
-    path.reserve(1 + r->lenDecodeUri + 16);
-    path += '.';
-    path += r->decodeUri;
-    if (path[path.size()-1] != '/')
-        path += '/';
+    path += '/';
 
     dir = opendir(path.c_str());
     if (dir == NULL)
@@ -212,134 +209,23 @@ int index_dir(Connect *r)
     closedir(dir);
     if (ret >= 0)
     {
-        r->resp_headers.p = r->resp_headers.s.c_str();
-        r->resp_headers.len = r->resp_headers.s.size();
-    }
+        r->html.p = r->html.s.c_str();
+        r->html.len = r->html.s.size();
 
-    return ret;
-}
-//======================================================================
-extern struct pollfd *cgi_poll_fd;
-
-int cgi_set_size_chunk(Connect *r);
-void cgi_del_from_list(Connect *r);
-//======================================================================
-void index_set_poll_list(Connect *r, int *i)
-{
-    if (r->operation == INDEX)
-    {
-        r->hdrs.reserve(64);
-        r->hdrs << "Content-Type: text/html\r\n";
-        r->respContentLength = -1;
-        r->mode_send = ((r->httpProt == HTTP11) && r->connKeepAlive) ? CHUNK : NO_CHUNK;
+        r->respStatus = RS200;
+        r->mode_send = NO_CHUNK;
         if (create_response_headers(r))
         {
             print_err(r, "<%s:%d> Error create_response_headers()\n", __func__, __LINE__);
             r->err = -1;
-            cgi_del_from_list(r);
-            end_response(r);
-            return;
+            return -1;
         }
-        else
-        {
-            r->resp_headers.p = r->resp_headers.s.c_str();
-            r->resp_headers.len = r->resp_headers.s.size();
-            r->operation = SEND_RESP_HEADERS;
-            r->cgi->dir = IN;
-        }
-    }
-    else if (r->operation == SEND_RESP_HEADERS)
-    {
-        if (r->resp_headers.len == 0)
-        {
-            r->resp_headers.s = "";
-            int ret = index_dir(r);
-            if (ret == 0)
-            {
-                cgi_del_from_list(r);
-                end_response(r);
-                return;
-            }
-            else if (ret < 0)
-            {
-                r->err = -1;
-                cgi_del_from_list(r);
-                end_response(r);
-                return;
-            }
 
-            r->operation = SEND_ENTITY;
-            r->cgi->dir = IN;
-        }
-    }
-    else if (r->operation == SEND_ENTITY)
-    {
-        if (r->resp_headers.len == 0)
-        {
-            if (r->mode_send == CHUNK)
-            {
-                r->cgi->len_buf = 0;
-                cgi_set_size_chunk(r);
-                r->cgi->dir = OUT;
-                r->mode_send = CHUNK_END;
-            }
-            else
-            {
-                cgi_del_from_list(r);
-                end_response(r);
-                return;
-            }
-        }
+        r->resp_headers.p = r->resp_headers.s.c_str();
+        r->resp_headers.len = r->resp_headers.s.size();
+        push_send_html(r);
+        return 1;
     }
 
-    cgi_poll_fd[*i].fd = r->clientSocket;
-    cgi_poll_fd[*i].events = POLLOUT;
-    (*i)++;
-}
-//----------------------------------------------------------------------
-int index_(Connect *r)
-{
-    if (r->cgi->dir == IN)
-    {
-        int len = (r->resp_headers.len > r->cgi->size_buf) ? r->cgi->size_buf : r->resp_headers.len;
-        memcpy(r->cgi->buf + 8, r->resp_headers.p, len);
-        r->resp_headers.p += len;
-        r->resp_headers.len -= len;
-        
-        r->cgi->len_buf = len;
-        if ((r->mode_send == CHUNK) && (r->operation == SEND_ENTITY))
-        {
-            if (cgi_set_size_chunk(r))
-            {
-                r->err = -1;
-                cgi_del_from_list(r);
-                end_response(r);
-                return -1;
-            }
-        }
-        else
-            r->cgi->p = r->cgi->buf + 8;
-        r->cgi->dir = OUT;
-    }
-
-    int ret = write(r->clientSocket, r->cgi->p, r->cgi->len_buf);
-    if (ret == -1)
-    {
-        print_err(r, "<%s:%d> Error send to client: %s\n", __func__, __LINE__, strerror(errno));
-        if (errno == EAGAIN)
-            return -EAGAIN;
-        return -1;
-    }
-
-    r->cgi->p += ret;
-    r->cgi->len_buf -= ret;
-    r->send_bytes += ret;
-
-    if (r->cgi->len_buf == 0)
-        r->cgi->dir = IN;
-    else
-        r->cgi->dir = OUT;
-        
     return ret;
 }
-

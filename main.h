@@ -79,10 +79,12 @@ enum {
 };
 enum { HTTP09 = 1, HTTP10, HTTP11, HTTP2 };
 enum MODE_SEND { NO_CHUNK, CHUNK, CHUNK_END };
-enum CGI_TYPE { NONE = 1, CGI, PHPCGI, PHPFPM, FASTCGI, SCGI };
+enum SOURCE_ENTITY { FROM_FILE, FROM_DATA_BUFFER, };
+
+enum CGI_TYPE { NONE = 1, CGI, PHPCGI, PHPFPM, FASTCGI, SCGI, };
 enum CGI_DIR { IN, OUT };
 enum { EXIT_THR = 1 };
-enum OPERATION_TYPE { READ_REQUEST = 1, SEND_RESP_HEADERS, SEND_ENTITY, INDEX, 
+enum OPERATION_TYPE { READ_REQUEST = 1, SEND_RESP_HEADERS, SEND_ENTITY, 
         CGI_CONNECT, FCGI_BEGIN, CGI_PARAMS, CGI_END_PARAMS, CGI_STDIN, CGI_END_STDIN, CGI_STDOUT, };
 
 enum CGI_STATUS { FCGI_READ_HEADER, READ_HEADERS, SEND_HEADERS, READ_CONTENT, READ_ERROR, READ_PADDING, FCGI_CLOSE };
@@ -267,8 +269,17 @@ public:
         int len;
     } resp_headers;
 
-    CGI_TYPE scriptType;
+    String hdrs;
+
+    struct
+    {
+        String s;
+        const char *p;
+        int len;
+    } html;
+
     const char *scriptName;
+    CGI_TYPE cgi_type;
     Cgi *cgi;
 
     struct
@@ -285,8 +296,9 @@ public:
         int paddingLen;
     } fcgi;
 
+    SOURCE_ENTITY source_entity;
     MODE_SEND mode_send;
-    String hdrs;
+
     std::string sTime;
     int respStatus;
     int numPart;
@@ -351,7 +363,7 @@ int write_to_client(Connect *req, const char *buf, int len, int timeout);
 int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *cont_len);
 int hd_read(Connect* req);
 //----------------------------------------------------------------------
-void send_message(Connect *req, const char *msg);
+int send_message(Connect *req, const char *msg);
 int create_response_headers(Connect *req);
 //----------------------------------------------------------------------
 std::string get_time();
@@ -388,13 +400,13 @@ void close_connect(Connect *req);
 void event_handler(RequestManager *ReqMan);
 void push_pollin_list(Connect *req);
 void push_pollout_list(Connect *req);
+void push_send_html(Connect *req);
 void close_event_handler();
 //----------------------------------------------------------------------
 int set_max_fd(int max_open_fd);
 //----------------------------------------------------------------------
 void cgi_handler(RequestManager *ReqMan);
 void push_cgi(Connect *req);
-void push_index(Connect *req);
 void close_cgi_handler(void);
 
 #endif

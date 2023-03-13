@@ -33,6 +33,8 @@ static condition_variable cond_;
 static int close_thr = 0;
 static int size_buf;
 static char *snd_buf;
+
+int send_html(Connect *r);
 //======================================================================
 int send_part_file(Connect *req)
 {
@@ -264,78 +266,93 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
             continue;
         if (r->operation == SEND_ENTITY)
         {
-            int wr = send_part_file(r);
-            if (wr == 0)
+            if (r->source_entity == FROM_FILE)
             {
-                del_from_list(r);
-                end_response(r);
-            }
-            else if (wr == -EAGAIN)
-            {
-                //print_err(r, "<%s:%d> Error SEND_ENTITY: EAGAIN\n", __func__, __LINE__);
-                r->sock_timer = 0;
-            }
-            else if (wr < 0)
-            {
-                r->err = wr;
-                r->req_hd.iReferer = MAX_HEADERS - 1;
-                r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-
-                del_from_list(r);
-                end_response(r);
-            }
-            else // (wr > 0)
-                r->sock_timer = 0;
-        }
-        else if (r->operation == SEND_RESP_HEADERS)
-        {
-            if (r->resp_headers.len > 0)
-            {
-                int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
-                if (wr == -EAGAIN)
+                int wr = send_part_file(r);
+                if (wr == 0)
                 {
-                    //print_err(r, "<%s:%d> Error SEND_RESP_HEADERS: EAGAIN\n", __func__, __LINE__);
+                    del_from_list(r);
+                    end_response(r);
+                }
+                else if (wr == -EAGAIN)
+                {
+                    //print_err(r, "<%s:%d> Error SEND_ENTITY: EAGAIN\n", __func__, __LINE__);
                     r->sock_timer = 0;
                 }
                 else if (wr < 0)
                 {
-                    r->err = -1;
+                    r->err = wr;
                     r->req_hd.iReferer = MAX_HEADERS - 1;
                     r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-
                     del_from_list(r);
                     end_response(r);
                 }
+                else // (wr > 0)
+                    r->sock_timer = 0;
+            }
+            else if (r->source_entity == FROM_DATA_BUFFER)
+            {
+                int wr = send_html(r);
+                if (wr == 0)
+                {
+                    del_from_list(r);
+                    end_response(r);
+                }
+                else if (wr == -EAGAIN)
+                {
+                    //print_err(r, "<%s:%d> Error SEND_ENTITY: EAGAIN\n", __func__, __LINE__);
+                    r->sock_timer = 0;
+                }
+                else if (wr < 0)
+                {
+                    r->err = wr;
+                    r->req_hd.iReferer = MAX_HEADERS - 1;
+                    r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+                    del_from_list(r);
+                    end_response(r);
+                }
+                else // (wr > 0)
+                    r->sock_timer = 0;
+            }
+        }
+        else if (r->operation == SEND_RESP_HEADERS)
+        {
+            int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
+            if (wr < 0)
+            {
+                if (errno == EAGAIN)
+                {
+                    //print_err(r, "<%s:%d> Error SEND_RESP_HEADERS: EAGAIN\n", __func__, __LINE__);
+                    r->sock_timer = 0;
+                }
                 else
                 {
-                    r->resp_headers.p += wr;
-                    r->resp_headers.len -= wr;
-                    if (r->resp_headers.len == 0)
-                    {
-                        if (r->reqMethod == M_HEAD)
-                        {
-                            del_from_list(r);
-                            end_response(r);
-                        }
-                        else
-                        {
-                            r->operation = SEND_ENTITY;
-                            r->sock_timer = 0;
-                        }
-                    }
-                    else
-                        r->sock_timer = 0;
+                    r->err = -1;
+                    r->req_hd.iReferer = MAX_HEADERS - 1;
+                    r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+                    del_from_list(r);
+                    end_response(r);
                 }
             }
-            else
+            else if (wr > 0)
             {
-                print_err(r, "<%s:%d> Error resp.len=%d\n", __func__, __LINE__, r->resp_headers.len);
-                r->err = -1;
-                r->req_hd.iReferer = MAX_HEADERS - 1;
-                r->reqHdValue[r->req_hd.iReferer] = "Error send response headers";
-
-                del_from_list(r);
-                end_response(r);
+                r->resp_headers.p += wr;
+                r->resp_headers.len -= wr;
+                if (r->resp_headers.len == 0)
+                {
+                    if (r->reqMethod == M_HEAD)
+                    {
+                        del_from_list(r);
+                        end_response(r);
+                    }
+                    else
+                    {
+                        r->operation = SEND_ENTITY;
+                        r->sock_timer = 0;
+                    }
+                }
+                else
+                    r->sock_timer = 0;
             }
         }
         else if (r->operation == READ_REQUEST)
@@ -427,6 +444,7 @@ void push_pollout_list(Connect *req)
     req->resp_headers.len = req->resp_headers.s.size();
 
     req->event = POLLOUT;
+    req->source_entity = FROM_FILE;
     req->sock_timer = 0;
     req->next = NULL;
 mtx_.lock();
@@ -438,6 +456,23 @@ mtx_.lock();
     }
     else
         wait_list_start = wait_list_end = req;
+mtx_.unlock();
+    cond_.notify_one();
+}
+//======================================================================
+void push_send_html(Connect *r)
+{
+    r->event = POLLOUT;
+    r->source_entity = FROM_DATA_BUFFER;
+    r->sock_timer = 0;
+    r->prev = NULL;
+mtx_.lock();
+    r->next = wait_list_start;
+    if (wait_list_start)
+        wait_list_start->prev = r;
+    wait_list_start = r;
+    if (!wait_list_end)
+        wait_list_end = r;
 mtx_.unlock();
     cond_.notify_one();
 }
@@ -464,4 +499,24 @@ void close_event_handler(void)
 {
     close_thr = 1;
     cond_.notify_one();
+}
+//======================================================================
+int send_html(Connect *r)
+{
+    int ret = write(r->clientSocket, r->html.p, r->html.len);
+    if (ret == -1)
+    {
+        print_err(r, "<%s:%d> Error send to client: %s\n", __func__, __LINE__, strerror(errno));
+        if (errno == EAGAIN)
+            return -EAGAIN;
+        return -1;
+    }
+
+    r->html.p += ret;
+    r->html.len -= ret;
+    r->send_bytes += ret;
+    if (r->html.len == 0)
+        ret = 0;
+
+    return ret;
 }

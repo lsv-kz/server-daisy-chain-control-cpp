@@ -490,17 +490,18 @@ void scgi_(Connect* r)
             if (r->resp_headers.len > 0)
             {
                 int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
-                if (wr == -EAGAIN)
+                if (wr < 0)
                 {
-                    r->sock_timer = 0;
-                }
-                else if (wr < 0)
-                {
-                    r->err = -1;
-                    r->req_hd.iReferer = MAX_HEADERS - 1;
-                    r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-                    cgi_del_from_list(r);
-                    end_response(r);
+                    if (errno == EAGAIN)
+                        r->sock_timer = 0;
+                    else
+                    {
+                        r->err = -1;
+                        r->req_hd.iReferer = MAX_HEADERS - 1;
+                        r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+                        cgi_del_from_list(r);
+                        end_response(r);
+                    }
                 }
                 else
                 {

@@ -77,17 +77,18 @@ int create_response_headers(Connect *req)
     return 0;
 }
 //======================================================================
-void send_message(Connect *req, const char *msg)
+int send_message(Connect *r, const char *msg)
 {
-    String html(256);
+    r->html.s = "";
+    r->html.s.reserve(256);
 
-    if (req->httpProt == 0)
-        req->httpProt = HTTP11;
+    if (r->httpProt == 0)
+        r->httpProt = HTTP11;
 
-    if ((req->respStatus != RS204) && (req->reqMethod != M_HEAD))
+    if (r->respStatus != RS204)
     {
-        const char *title = status_resp(req->respStatus);
-        html << "<html>\r\n"
+        const char *title = status_resp(r->respStatus);
+        r->html.s << "<html>\r\n"
                 "<head>\r\n"
                 "<title>" << title << "</title>\r\n"
                 "<meta charset=\"utf-8\">\r\n"
@@ -95,39 +96,29 @@ void send_message(Connect *req, const char *msg)
                 "<body>\r\n"
                 "<h3>" << title << "</h3>\r\n";
         if (msg)
-            html << "<p>" << msg <<  "</p>\r\n";
-        html << "<hr>\r\n" << req->sTime << "\r\n"
+            r->html.s << "<p>" << msg <<  "</p>\r\n";
+        r->html.s << "<hr>\r\n" << r->sTime << "\r\n"
                 "</body>\r\n"
-                "</html>\r\n";
+                "</html>";
 
-        req->respContentType = "text/html";
-        req->respContentLength = html.size();
+        r->respContentType = "text/html";
+        r->html.len = r->respContentLength = r->html.s.size();
+        r->html.p = r->html.s.c_str();
     }
-
-    if (req->respStatus == RS204)
+    else // (r->respStatus == RS204)
     {
-        req->respContentLength = 0;
-        req->respContentType = NULL;
+        r->respContentLength = 0;
+        r->respContentType = NULL;
     }
 
-    req->connKeepAlive = 0;
+    r->mode_send = NO_CHUNK;
+    if ((r->httpProt != HTTP09) && create_response_headers(r))
+        return -1;
 
-    if ((req->httpProt != HTTP09) && create_response_headers(req))
-        return;
-
-    if ((req->reqMethod == M_HEAD) || (req->respStatus == RS204))
-        return;
-
-    if (req->respContentLength > 0)
-    {
-        req->resp_headers.s << html.c_str();
-
-        req->send_bytes = write_to_client(req, req->resp_headers.s.c_str(), req->resp_headers.s.size(), conf->Timeout);
-        if (req->send_bytes <= 0)
-        {
-            print_err(req, "<%s:%d> Error write_to_client()\n", __func__, __LINE__);
-        }
-    }
+    r->resp_headers.p = r->resp_headers.s.c_str();
+    r->resp_headers.len = r->resp_headers.s.size();
+    push_send_html(r);
+    return 1;
 }
 //======================================================================
 const char *status_resp(int st)

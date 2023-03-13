@@ -22,7 +22,7 @@ void Connect::init()
 
     respStatus = 0;
 
-    scriptType = NONE;
+    cgi_type = NONE;
     scriptName = NULL;
 
     hdrs = "";

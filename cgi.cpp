@@ -24,9 +24,6 @@ void fcgi_(Connect* r);
 
 void scgi_set_poll_list(Connect *r, int *i);
 void scgi_(Connect* r);
-
-void index_set_poll_list(Connect *r, int *i);
-int index_(Connect *r);
 //======================================================================
 const char *get_script_name(const char *name)
 {
@@ -60,8 +57,8 @@ void cgi_del_from_list(Connect *r)
 {
     if (r->cgi)
     {
-        if ((r->scriptType == CGI) || 
-            (r->scriptType == PHPCGI))
+        if ((r->cgi_type == CGI) || 
+            (r->cgi_type == PHPCGI))
         {
             if (r->cgi->from_script > 0)
             {
@@ -77,9 +74,9 @@ void cgi_del_from_list(Connect *r)
             
             wait_pid(r);
         }
-        else if ((r->scriptType == PHPFPM) || 
-                (r->scriptType == FASTCGI) ||
-                (r->scriptType == SCGI))
+        else if ((r->cgi_type == PHPFPM) || 
+                (r->cgi_type == FASTCGI) ||
+                (r->cgi_type == SCGI))
         {
             if (r->fcgi.fd > 0)
                 close(r->fcgi.fd);
@@ -176,7 +173,7 @@ static int cgi_set_poll_list()
             if (r->sock_timer == 0)
                 r->sock_timer = t;
             
-            switch (r->scriptType)
+            switch (r->cgi_type)
             {
                 case CGI:
                 case PHPCGI:
@@ -189,11 +186,8 @@ static int cgi_set_poll_list()
                 case SCGI:
                     scgi_set_poll_list(r, &i);
                     break;
-                case NONE:
-                    index_set_poll_list(r, &i);
-                    break;
                 default:
-                    print_err(r, "<%s:%d> ??? cgi.scriptType=%d\n", __func__, __LINE__, r->scriptType);
+                    print_err(r, "<%s:%d> ??? cgi.scriptType=%d\n", __func__, __LINE__, r->cgi_type);
                     r->err = -RS500;
                     cgi_del_from_list(r);
                     end_response(r);
@@ -251,7 +245,7 @@ static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
             }
             else
             {
-                switch (r->scriptType)
+                switch (r->cgi_type)
                 {
                     case CGI:
                     case PHPCGI:
@@ -304,7 +298,7 @@ static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
                         end_response(r);
                         break;
                     default:
-                        print_err(r, "<%s:%d> ??? cgi.scriptType=%d\n", __func__, __LINE__, r->scriptType);
+                        print_err(r, "<%s:%d> ??? cgi.scriptType=%d\n", __func__, __LINE__, r->cgi_type);
                         r->err = -1;
                         cgi_del_from_list(r);
                         end_response(r);
@@ -330,23 +324,19 @@ static void cgi_worker(int num_chld, int npoll, RequestManager *ReqMan)
         if (r->poll_status == WAIT)
             continue;
 
-        if ((r->scriptType == CGI) || 
-            (r->scriptType == PHPCGI))
+        if ((r->cgi_type == CGI) || 
+            (r->cgi_type == PHPCGI))
         {
             cgi_(r);
         }
-        else if ((r->scriptType == PHPFPM) || 
-            (r->scriptType == FASTCGI))
+        else if ((r->cgi_type == PHPFPM) || 
+            (r->cgi_type == FASTCGI))
         {
             fcgi_(r);
         }
-        else if (r->scriptType == SCGI)
+        else if (r->cgi_type == SCGI)
         {
             scgi_(r);
-        }
-        else if (r->scriptType == NONE)
-        {
-            index_(r);
         }
     }
 }
@@ -406,25 +396,6 @@ mtx_.unlock();
     cond_.notify_one();
 }
 //======================================================================
-void push_index(Connect *r)
-{
-    r->respStatus = RS200;
-    r->operation = INDEX;
-    r->scriptType = NONE;
-    r->sock_timer = 0;
-    r->prev = NULL;
-mtx_.lock();
-    r->next = wait_list_start;
-    if (wait_list_start)
-        wait_list_start->prev = r;
-    wait_list_start = r;
-    if (!wait_list_end)
-        wait_list_end = r;
-    ++num_wait;
-mtx_.unlock();
-    cond_.notify_one();
-}
-//======================================================================
 static int cgi_fork(Connect *req, int* serv_cgi, int* cgi_serv)
 {
     struct stat st;
@@ -451,7 +422,7 @@ static int cgi_fork(Connect *req, int* serv_cgi, int* cgi_serv)
     }
 
     String path;
-    switch (req->scriptType)
+    switch (req->cgi_type)
     {
         case CGI:
             path << conf->ScriptPath << get_script_name(req->scriptName);
@@ -505,7 +476,7 @@ static int cgi_fork(Connect *req, int* serv_cgi, int* cgi_serv)
             close(cgi_serv[1]);
         }
         
-        if (req->scriptType == PHPCGI)
+        if (req->cgi_type == PHPCGI)
             setenv("REDIRECT_STATUS", "true", 1);
         setenv("PATH", "/bin:/usr/bin:/usr/local/bin", 1);
         setenv("SERVER_SOFTWARE", conf->ServerSoftware.c_str(), 1);
@@ -537,12 +508,12 @@ static int cgi_fork(Connect *req, int* serv_cgi, int* cgi_serv)
         setenv("QUERY_STRING", req->sReqParam ? req->sReqParam : "", 1);
 
         int err_ = 0;
-        if (req->scriptType == CGI)
+        if (req->cgi_type == CGI)
         {
             execl(path.c_str(), base_name(req->scriptName), NULL);
             err_ = errno;
         }
-        else if (req->scriptType == PHPCGI)
+        else if (req->cgi_type == PHPCGI)
         {
             if (conf->UsePHP == "php-cgi")
             {
@@ -626,7 +597,7 @@ int cgi_stdin(Connect *req)
     if (req->tail)
     {
         int fd;
-        if (req->scriptType == CGI)
+        if (req->cgi_type == CGI)
             fd = req->cgi->to_script;
         else
             fd = req->fcgi.fd;
@@ -683,7 +654,7 @@ int cgi_stdin(Connect *req)
     else if (req->cgi->dir == OUT)
     {
         int fd;
-        if (req->scriptType == CGI)
+        if (req->cgi_type == CGI)
             fd = req->cgi->to_script;
         else
             fd = req->fcgi.fd;
@@ -722,7 +693,7 @@ int cgi_stdout(Connect *req)
     if (req->cgi->dir == IN)
     {
         int fd;
-        if (req->scriptType == CGI)
+        if (req->cgi_type == CGI)
             fd = req->cgi->from_script;
         else
             fd = req->fcgi.fd;
@@ -873,7 +844,7 @@ int cgi_read_hdrs(Connect *req)
         return -RS505;
     //num_read = (num_read > 16) ? 16 : num_read;
     int fd;
-    if (req->scriptType == CGI)
+    if (req->cgi_type == CGI)
         fd = req->cgi->from_script;
     else
         fd = req->fcgi.fd;
@@ -1091,19 +1062,22 @@ static void cgi_(Connect* r)
             if (r->resp_headers.len > 0)
             {
                 int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
-                if (wr == -EAGAIN)
+                if (wr < 0)
                 {
-                    r->sock_timer = 0;
-                }
-                else if (wr < 0)
-                {
-                    r->err = -1;
-                    r->req_hd.iReferer = MAX_HEADERS - 1;
-                    r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-                    close(r->cgi->from_script);
-                    r->cgi->from_script = -1;
-                    cgi_del_from_list(r);
-                    end_response(r);
+                    if (errno == EAGAIN)
+                    {
+                        r->sock_timer = 0;
+                    }
+                    else
+                    {
+                        r->err = -1;
+                        r->req_hd.iReferer = MAX_HEADERS - 1;
+                        r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+                        close(r->cgi->from_script);
+                        r->cgi->from_script = -1;
+                        cgi_del_from_list(r);
+                        end_response(r);
+                    }
                 }
                 else
                 {

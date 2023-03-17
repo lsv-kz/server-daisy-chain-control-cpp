@@ -462,6 +462,8 @@ int fcgi_stdout(Connect *r)
             }
             *(r->cgi->buf + 8 + r->cgi->len_buf) = 0;
             fprintf(stderr, "%s\n", r->cgi->buf + 8);
+            if (r->fcgi.dataLen == 0)
+                fprintf(stderr, "\n");
         }
         else if (r->cgi->status == FCGI_CLOSE)
         {
@@ -531,12 +533,15 @@ int fcgi_stdout(Connect *r)
     return 0;
 }
 //======================================================================
-int fcgi_read_hdrs(Connect *r)
+int fcgi_read_http_headers(Connect *r)
 {
-    int num_read = r->cgi->size_buf - r->cgi->len_buf - 1;
+    int num_read;
+    if ((r->cgi->size_buf - r->cgi->len_buf - 1) >= r->fcgi.dataLen)
+        num_read = r->fcgi.dataLen;
+    else
+        num_read = r->cgi->size_buf - r->cgi->len_buf - 1;
     if (num_read <= 0)
         return -RS505;
-    num_read = (num_read > 256) ? 256 : num_read;
     int n = read(r->fcgi.fd, r->cgi->p, num_read);
     if (n < 0)
     {
@@ -1032,7 +1037,7 @@ void fcgi_(Connect* r)
         }
         else if (r->cgi->status == READ_HEADERS)
         {
-            if (fcgi_read_hdrs(r) > 0)
+            if (fcgi_read_http_headers(r) > 0)
             {
                 r->mode_send = ((r->httpProt == HTTP11) && r->connKeepAlive) ? CHUNK : NO_CHUNK;
                 if (create_response_headers(r))

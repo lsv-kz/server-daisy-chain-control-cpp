@@ -376,117 +376,130 @@ int fcgi_stdin(Connect *req)
     return 0;
 }
 //=====================================================================================================================
-int fcgi_stdout(Connect *r)
+void fcgi_stdout(Connect *r)
 {
     if (r->cgi->dir == IN)
     {
-        int len = 0;
         if ((r->cgi->status == READ_CONTENT) || 
             (r->cgi->status == READ_ERROR) ||
             (r->cgi->status == FCGI_CLOSE))
         {
-            len = (r->fcgi.dataLen > r->cgi->size_buf) ? r->cgi->size_buf : r->fcgi.dataLen;
-            if (len == 0)
+            if (r->fcgi.dataLen == 0)
             {
                 r->cgi->status = READ_PADDING;
-                return 1;
+                return;
             }
-        }
-        else if (r->cgi->status == READ_PADDING)
-        {
-            len = (r->fcgi.paddingLen > r->cgi->size_buf) ? r->cgi->size_buf : r->fcgi.paddingLen;
-            if (len == 0)
-            {
-                r->cgi->status = FCGI_READ_HEADER;
-                r->cgi->p = r->cgi->buf;
-                r->cgi->len_buf = 0;
-                return 1;
-            }
-        }
 
-        r->cgi->len_buf = read(r->fcgi.fd, r->cgi->buf + 8, len);
-        if (r->cgi->len_buf == -1)
-        {
-            print_err(r, "<%s:%d> Error read from script(fd=%d): %s(%d)\n", 
-                    __func__, __LINE__, r->fcgi.fd, strerror(errno), errno);
-            if (errno == EAGAIN)
+            int len = (r->fcgi.dataLen > r->cgi->size_buf) ? r->cgi->size_buf : r->fcgi.dataLen;
+            r->cgi->len_buf = read(r->fcgi.fd, r->cgi->buf + 8, len);
+            if (r->cgi->len_buf == -1)
             {
-                r->sock_timer = 0;
-                return -EAGAIN;
+                print_err(r, "<%s:%d> Error read from script(fd=%d): %s(%d)\n", 
+                        __func__, __LINE__, r->fcgi.fd, strerror(errno), errno);
+                if (errno == EAGAIN)
+                {
+                    r->sock_timer = 0;
+                    return;
+                }
+                else
+                {
+                    r->err = -1;
+                    cgi_del_from_list(r);
+                    end_response(r);
+                    return;
+                }
             }
-            else
+            else if (r->cgi->len_buf == 0)
             {
                 r->err = -1;
                 cgi_del_from_list(r);
                 end_response(r);
-                return -1;
+                return;
             }
-        }
-        else if (r->cgi->len_buf == 0)
-        {
-            r->err = -1;
-            cgi_del_from_list(r);
-            end_response(r);
-            return -1;
-        }
-//fwrite(req->fcgi.buf + 8, 1, req->fcgi.len, stderr);
-//fprintf(stderr, "\n");
-        if (r->cgi->status == READ_CONTENT)
-        {
-            r->cgi->dir = OUT;
-            r->fcgi.dataLen -= r->cgi->len_buf;
-            if (r->mode_send == CHUNK)
+
+            if (r->cgi->status == READ_CONTENT)
             {
-                if (cgi_set_size_chunk(r))
-                    return -1;
+                r->cgi->dir = OUT;
+                r->fcgi.dataLen -= r->cgi->len_buf;
+                if (r->mode_send == CHUNK)
+                {
+                    if (cgi_set_size_chunk(r))
+                        return;
+                }
+                else
+                    r->cgi->p = r->cgi->buf + 8;
             }
-            else
-                r->cgi->p = r->cgi->buf + 8;
+            else if (r->cgi->status == READ_ERROR)
+            {
+                r->fcgi.dataLen -= r->cgi->len_buf;
+                if (r->fcgi.dataLen == 0)
+                {
+                    r->cgi->status = READ_PADDING;
+                }
+                *(r->cgi->buf + 8 + r->cgi->len_buf) = 0;
+                fprintf(stderr, "%s\n", r->cgi->buf + 8);
+                if (r->fcgi.dataLen == 0)
+                    fprintf(stderr, "\n");
+            }
+            else if (r->cgi->status == FCGI_CLOSE)
+            {
+                r->fcgi.dataLen -= r->cgi->len_buf;
+                if (r->fcgi.dataLen == 0)
+                {
+                    if (r->mode_send == NO_CHUNK)
+                    {
+                        r->connKeepAlive = 0;
+                        cgi_del_from_list(r);
+                        end_response(r);
+                    }
+                    else
+                    {
+                        r->cgi->len_buf = 0;
+                        cgi_set_size_chunk(r);
+                        r->cgi->dir = OUT;
+                        r->mode_send = CHUNK_END;
+                    }
+                }
+            }
         }
         else if (r->cgi->status == READ_PADDING)
         {
-            r->fcgi.paddingLen -= r->cgi->len_buf;
-            if (r->fcgi.paddingLen == 0)
+            if (r->fcgi.paddingLen > 0)
             {
-                r->cgi->status = FCGI_READ_HEADER;
-                r->cgi->p = r->cgi->buf;
-                r->cgi->len_buf = 0;
-            }
-        }
-        else if (r->cgi->status == READ_ERROR)
-        {
-            r->fcgi.dataLen -= r->cgi->len_buf;
-            if (r->fcgi.dataLen == 0)
-            {
-                r->cgi->status = READ_PADDING;
-            }
-            *(r->cgi->buf + 8 + r->cgi->len_buf) = 0;
-            fprintf(stderr, "%s\n", r->cgi->buf + 8);
-            if (r->fcgi.dataLen == 0)
-                fprintf(stderr, "\n");
-        }
-        else if (r->cgi->status == FCGI_CLOSE)
-        {
-            r->fcgi.dataLen -= r->cgi->len_buf;
-            if (r->fcgi.dataLen == 0)
-            {
-                if (r->mode_send == NO_CHUNK)
+                char buf[256];
+            
+                int len = (r->fcgi.paddingLen > (int)sizeof(buf)) ? sizeof(buf) : r->fcgi.paddingLen;
+                int n = read(r->fcgi.fd, buf, len);
+                if (n <= 0)
                 {
-                    r->connKeepAlive = 0;
-                    cgi_del_from_list(r);
-                    end_response(r);
+                    print_err(r, "<%s:%d> Error read from script(fd=%d): %s(%d)\n", 
+                            __func__, __LINE__, r->fcgi.fd, strerror(errno), errno);
+                    if (errno == EAGAIN)
+                    {
+                        r->sock_timer = 0;
+                        return;
+                    }
+                    else
+                    {
+                        r->err = -1;
+                        cgi_del_from_list(r);
+                        end_response(r);
+                        return;
+                    }
                 }
                 else
                 {
-                    r->cgi->len_buf = 0;
-                    cgi_set_size_chunk(r);
-                    r->cgi->dir = OUT;
-                    r->mode_send = CHUNK_END;
+                    r->fcgi.paddingLen -= n;
                 }
             }
-        }
 
-        return r->cgi->len_buf;
+            if (r->fcgi.paddingLen == 0)
+            {
+                r->cgi->status = FCGI_READ_HEADER;
+                r->fcgi.ptr_header = r->cgi->buf;
+                r->fcgi.len_header = 0;
+            }
+        }
     }
     else if (r->cgi->dir == OUT)
     {
@@ -497,14 +510,14 @@ int fcgi_stdout(Connect *r)
             if (errno == EAGAIN)
             {
                 r->sock_timer = 0;
-                return -EAGAIN;
+                return;
             }
             else
             {
                 r->err = -1;
                 cgi_del_from_list(r);
                 end_response(r);
-                return -1;
+                return;
             }
         }
 
@@ -518,8 +531,8 @@ int fcgi_stdout(Connect *r)
                 if (r->fcgi.paddingLen == 0)
                 {
                     r->cgi->status = FCGI_READ_HEADER;
-                    r->cgi->p = r->cgi->buf;
-                    r->cgi->len_buf = 0;
+                    r->fcgi.ptr_header = r->cgi->buf;
+                    r->fcgi.len_header = 0;
                 }
                 else
                     r->cgi->status = READ_PADDING;
@@ -527,10 +540,7 @@ int fcgi_stdout(Connect *r)
 
             r->cgi->dir = IN;
         }
-        return ret;
     }
-
-    return 0;
 }
 //======================================================================
 int fcgi_read_http_headers(Connect *r)
@@ -541,7 +551,13 @@ int fcgi_read_http_headers(Connect *r)
     else
         num_read = r->cgi->size_buf - r->cgi->len_buf - 1;
     if (num_read <= 0)
-        return -RS505;
+    {
+        r->err = -RS502;
+        cgi_del_from_list(r);
+        end_response(r);
+        return -1;
+    }
+
     int n = read(r->fcgi.fd, r->cgi->p, num_read);
     if (n < 0)
     {
@@ -576,7 +592,7 @@ int fcgi_read_http_headers(Connect *r)
     if (n == 1) // empty line found
     {
         r->cgi->status = SEND_HEADERS;
-        r->fcgi.headers = true;
+        r->fcgi.http_headers_received = true;
         r->sock_timer = 0;
         return r->cgi->len_buf;
     }
@@ -619,42 +635,22 @@ int write_to_fcgi(Connect* r)
     return ret;
 }
 //======================================================================
-int fcgi_read(Connect* r, int len)
-{
-    int ret = read(r->fcgi.fd, r->cgi->p, len);
-    if (ret == -1)
-    {
-        if (errno == EAGAIN)
-        {
-            r->sock_timer = 0;
-            return 0;
-        }
-        else
-        {
-            print_err(r, "<%s:%d> Error read from fcgi: %s\n", __func__, __LINE__, strerror(errno));
-            return -1;
-        }
-    }
-    else
-    {
-        r->cgi->len_buf += ret;
-        r->cgi->p += ret;
-        r->sock_timer = 0;
-    }
-
-    return ret;
-}
-//======================================================================
 int fcgi_read_header(Connect* r)
 {
     int n = 0;
 
-    if (r->cgi->len_buf < 8)
+    if (r->fcgi.len_header < 8)
     {
-        int len = 8 - r->cgi->len_buf;
-        n = fcgi_read(r, len);
+        int len = 8 - r->fcgi.len_header;
+        n = read(r->fcgi.fd, r->fcgi.ptr_header, len);
         if (n <= 0)
         {
+            if (errno == EAGAIN)
+            {
+                r->sock_timer = 0;
+                return 0;
+            }
+            
             if (n == 0)
                 print_err(r, "<%s:%d> Error read from fcgi: read()=0\n", __func__, __LINE__);
             r->err = -1;
@@ -663,13 +659,18 @@ int fcgi_read_header(Connect* r)
             return n;
         }
     }
+    
+    r->fcgi.len_header += n;
+    r->fcgi.ptr_header += n;
+    r->sock_timer = 0;
+    if (r->fcgi.len_header == 8)
+    {
+        r->fcgi.fcgi_type = (unsigned char)r->cgi->buf[1];
+        r->fcgi.paddingLen = (unsigned char)r->cgi->buf[6];
+        r->fcgi.dataLen = ((unsigned char)r->cgi->buf[4]<<8) | (unsigned char)r->cgi->buf[5];
+    }
 
-    r->fcgi.fcgi_type = (unsigned char)r->cgi->buf[1];
-    r->fcgi.paddingLen = (unsigned char)r->cgi->buf[6];
-    r->fcgi.dataLen = ((unsigned char)r->cgi->buf[4]<<8) | (unsigned char)r->cgi->buf[5];
-    r->cgi->status = READ_CONTENT;
-
-    return r->cgi->len_buf;
+    return r->fcgi.len_header;
 }
 //======================================================================
 int get_sock_fcgi(Connect *req, const char *script)
@@ -722,6 +723,7 @@ void fcgi_set_poll_list(Connect *r, int *i)
             end_response(r);
             return;
         }
+
         fcgi_create_param(r);
     }
 
@@ -795,6 +797,23 @@ void fcgi_set_poll_list(Connect *r, int *i)
     }
     else if (r->operation == CGI_STDOUT)//===================================================
     {
+        if (r->fcgi.http_headers_received == false)
+        {
+            if (r->fcgi.dataLen == 0)
+            {
+                if (r->fcgi.paddingLen == 0)
+                {
+                    r->cgi->status = FCGI_READ_HEADER;
+                    r->fcgi.ptr_header = r->cgi->buf;
+                    r->fcgi.len_header = 0;
+                }
+                else
+                    r->cgi->status = READ_PADDING;
+            }
+            else
+                r->cgi->status = READ_HEADERS;
+        }
+
         if (r->cgi->status == FCGI_READ_HEADER)
         {
             cgi_poll_fd[*i].fd = r->fcgi.fd;
@@ -854,8 +873,8 @@ void fcgi_set_poll_list(Connect *r, int *i)
                         if (r->fcgi.paddingLen == 0)
                         {
                             r->cgi->status = FCGI_READ_HEADER;
-                            r->cgi->p = r->cgi->buf;
-                            r->cgi->len_buf = 0;
+                            r->fcgi.ptr_header = r->cgi->buf;
+                            r->fcgi.len_header = 0;
                         }
                         else
                         {
@@ -984,9 +1003,11 @@ void fcgi_(Connect* r)
             if (r->cgi->len_buf == 0)
             {
                 r->operation = CGI_STDOUT;
-                r->fcgi.headers = false;
-                r->cgi->status = FCGI_READ_HEADER;
-                r->cgi->p = r->cgi->buf;
+                r->fcgi.http_headers_received = false;
+                r->fcgi.dataLen = 0;
+                r->fcgi.paddingLen = 0;
+                r->tail = NULL;
+                r->p_newline = r->cgi->p = r->cgi->buf + 8;
                 r->cgi->len_buf = 0;
             }
         }
@@ -1002,14 +1023,7 @@ void fcgi_(Connect* r)
                 {
                     case FCGI_STDOUT:
                     {
-                        if (r->fcgi.headers == false)
-                        {
-                            r->cgi->status = READ_HEADERS;
-                            r->tail = NULL;
-                            r->p_newline = r->cgi->p = r->cgi->buf;
-                            r->cgi->len_buf = 0;
-                        }
-                        else
+                        if (r->fcgi.http_headers_received == true)
                         {
                             if (r->fcgi.dataLen > 0)
                             {
@@ -1037,7 +1051,8 @@ void fcgi_(Connect* r)
         }
         else if (r->cgi->status == READ_HEADERS)
         {
-            if (fcgi_read_http_headers(r) > 0)
+            int ret = fcgi_read_http_headers(r);
+            if (ret > 0)
             {
                 r->mode_send = ((r->httpProt == HTTP11) && r->connKeepAlive) ? CHUNK : NO_CHUNK;
                 if (create_response_headers(r))
@@ -1053,6 +1068,13 @@ void fcgi_(Connect* r)
                     r->resp_headers.len = r->resp_headers.s.size();
                     r->cgi->status = SEND_HEADERS;
                 }
+            }
+            else if (ret < 0)
+            {
+                print_err(r, "<%s:%d> Error fcgi_read_http_headers()\n", __func__, __LINE__);
+                r->err = -RS502;
+                cgi_del_from_list(r);
+                end_response(r);
             }
         }
         else if (r->cgi->status == SEND_HEADERS)

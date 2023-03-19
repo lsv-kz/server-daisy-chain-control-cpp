@@ -21,6 +21,7 @@ void Connect::init()
     req_hd = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1LL};
 
     respStatus = 0;
+    mode_send = NO_CHUNK;
 
     cgi_type = NONE;
     scriptName = NULL;

@@ -644,6 +644,8 @@ int parse_headers(Connect *req, char *pName, int i)
     {
         req->req_hd.reqContentLength = atoll(pVal);
         req->req_hd.iReqContentLength = i;
+        if (req->req_hd.iReqContentLength < 0)
+            return -RS400;
     }
     else if (!strcmp(pName, "content-type:"))
     {

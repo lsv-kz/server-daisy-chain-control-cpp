@@ -347,8 +347,16 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
                     }
                     else
                     {
-                        r->operation = SEND_ENTITY;
-                        r->sock_timer = 0;
+                        if ((r->source_entity == FROM_DATA_BUFFER) && (r->html.len == 0))
+                        {
+                            del_from_list(r);
+                            end_response(r);
+                        }
+                        else
+                        {
+                            r->operation = SEND_ENTITY;
+                            r->sock_timer = 0;
+                        }
                     }
                 }
                 else
@@ -370,12 +378,17 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
             }
             else if (rd > 0)
             {
-                r->operation = SEND_RESP_HEADERS;
                 del_from_list(r);
                 push_resp_list(r, ReqMan);
             }
             else // rd == 0
                 r->sock_timer = 0;
+        }
+        else
+        {
+            fprintf(stderr, "<%s:%d> ? operation=%d\n", __func__, __LINE__, r->operation);
+            del_from_list(r);
+            close_connect(r);
         }
     }
 }
@@ -437,25 +450,26 @@ void event_handler(RequestManager *ReqMan)
     //print_err("*** Exit [%s:proc=%d] ***\n", __func__, num_chld);
 }
 //======================================================================
-void push_pollout_list(Connect *req)
+void push_pollout_list(Connect *r)
 {
-    lseek(req->fd, req->offset, SEEK_SET);
-    req->resp_headers.p = req->resp_headers.s.c_str();
-    req->resp_headers.len = req->resp_headers.s.size();
+    lseek(r->fd, r->offset, SEEK_SET);
+    r->resp_headers.p = r->resp_headers.s.c_str();
+    r->resp_headers.len = r->resp_headers.s.size();
 
-    req->event = POLLOUT;
-    req->source_entity = FROM_FILE;
-    req->sock_timer = 0;
-    req->next = NULL;
+    r->event = POLLOUT;
+    r->source_entity = FROM_FILE;
+    r->operation = SEND_RESP_HEADERS;
+    r->sock_timer = 0;
+    r->next = NULL;
 mtx_.lock();
-    req->prev = wait_list_end;
+    r->prev = wait_list_end;
     if (wait_list_start)
     {
-        wait_list_end->next = req;
-        wait_list_end = req;
+        wait_list_end->next = r;
+        wait_list_end = r;
     }
     else
-        wait_list_start = wait_list_end = req;
+        wait_list_start = wait_list_end = r;
 mtx_.unlock();
     cond_.notify_one();
 }
@@ -464,6 +478,7 @@ void push_send_html(Connect *r)
 {
     r->event = POLLOUT;
     r->source_entity = FROM_DATA_BUFFER;
+    r->operation = SEND_RESP_HEADERS;
     r->sock_timer = 0;
     r->prev = NULL;
 mtx_.lock();

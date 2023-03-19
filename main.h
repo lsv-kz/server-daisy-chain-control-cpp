@@ -284,7 +284,7 @@ public:
 
     struct
     {
-        bool headers;
+        bool http_headers_received;
         int fd;
 
         int i_param;
@@ -294,6 +294,8 @@ public:
         unsigned char fcgi_type;
         int dataLen;
         int paddingLen;
+        char *ptr_header;
+        int len_header;
     } fcgi;
 
     SOURCE_ENTITY source_entity;

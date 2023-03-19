@@ -916,8 +916,24 @@ static void cgi_set_poll_list(Connect *r, int *i)
         {
             if (r->reqMethod == M_POST)
             {
-                r->operation = CGI_STDIN;
                 r->cgi->len_post = r->req_hd.reqContentLength - r->lenTail;
+                if (r->req_hd.reqContentLength > 0)
+                    r->operation = CGI_STDIN;
+                else if (r->cgi->len_post == 0)
+                {
+                    r->operation = CGI_STDOUT;
+                    r->cgi->status = READ_HEADERS;
+                    r->lenTail = 0;
+                    r->tail = NULL;
+                    r->p_newline = r->cgi->buf;
+                }
+                else
+                {
+                    r->err = -RS400;
+                    cgi_del_from_list(r);
+                    end_response(r);
+                    return;
+                }
             }
             else
             {

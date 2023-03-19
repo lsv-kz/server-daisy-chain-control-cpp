@@ -87,7 +87,10 @@ void response1(RequestManager *ReqMan)
             goto end;
         }
         //--------------------------------------------------------------
-        if ((req->reqMethod == M_GET) || (req->reqMethod == M_HEAD) || (req->reqMethod == M_POST))
+        if ((req->reqMethod == M_GET) || 
+            (req->reqMethod == M_HEAD) || 
+            (req->reqMethod == M_POST) || 
+            (req->reqMethod == M_OPTIONS))
         {
             int ret = response2(req);
             if (ret == 1)
@@ -101,10 +104,8 @@ void response1(RequestManager *ReqMan)
 
             req->err = ret;
         }
-        else if (req->reqMethod == M_OPTIONS)
-            req->err = options(req);
         else
-            req->err = -RS501;
+            req->err = -RS405;
 
     end:
         end_response(req);
@@ -241,6 +242,11 @@ int response2(Connect *req)
     {
         if (req->reqMethod == M_POST)
             return -RS404;
+        else if (req->reqMethod == M_OPTIONS)
+        {
+            req->respContentType = "text/html; charset=utf-8";
+            return options(req);
+        }
 
         if (req->uri[req->uriLen - 1] != '/')
         {
@@ -330,6 +336,8 @@ int response2(Connect *req)
     req->fileSize = file_size(path.c_str());
     req->numPart = 0;
     req->respContentType = content_type(path.c_str());
+    if (req->reqMethod == M_OPTIONS)
+        return options(req);
     //------------------------------------------------------------------
     req->fd = open(path.c_str(), O_RDONLY);
     if (req->fd == -1)
@@ -524,19 +532,16 @@ int create_multipart_head(Connect *req, struct Range *ranges, char *buf, int len
     return all;
 }
 //======================================================================
-int options(Connect *req)
+int options(Connect *r)
 {
-    req->respStatus = RS200;
-    if (create_response_headers(req))
+    r->respStatus = RS200;
+    r->respContentLength = 0;
+    if (create_response_headers(r))
         return -1;
 
-    if (write_to_client(req, req->resp_headers.s.c_str(), req->resp_headers.s.size(), conf->Timeout) < 0)
-    {
-        print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
-        req->req_hd.iReferer = MAX_HEADERS - 1;
-        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
-        return -1;
-    }
-
-    return 0;
+    r->resp_headers.p = r->resp_headers.s.c_str();
+    r->resp_headers.len = r->resp_headers.s.size();
+    r->html.len = 0;
+    push_send_html(r);
+    return 1;
 }

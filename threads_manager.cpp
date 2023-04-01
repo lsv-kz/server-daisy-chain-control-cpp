@@ -210,7 +210,6 @@ void end_response(Connect *req)
         req->init();
         req->timeout = conf->TimeoutKeepAlive;
         ++req->numReq;
-        req->operation = READ_REQUEST;
         push_pollin_list(req);
     }
 }
@@ -490,7 +489,6 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
                 req->remoteAddr[0] = 0;
             }
 
-            req->operation = READ_REQUEST;
             start_conn();
             push_pollin_list(req);
         }

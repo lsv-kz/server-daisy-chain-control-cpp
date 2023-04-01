@@ -25,20 +25,19 @@ int get_sock_fcgi(Connect *r, const char *script);
 void cgi_del_from_list(Connect *r);
 int cgi_set_size_chunk(Connect *r);
 int cgi_find_empty_line(Connect *req);
-static void fcgi_create_param(Connect *req);
 //======================================================================
 void fcgi_set_header(Connect* r, int type)
 {
+    r->fcgi.fcgi_type = type;
+    r->fcgi.paddingLen = 0;
     char *p = r->cgi->buf;
     *p++ = FCGI_VERSION_1;
     *p++ = (unsigned char)type;
     *p++ = (unsigned char) ((1 >> 8) & 0xff);
     *p++ = (unsigned char) ((1) & 0xff);
-
-    *p++ = (unsigned char) ((r->cgi->len_buf >> 8) & 0xff);
-    *p++ = (unsigned char) ((r->cgi->len_buf) & 0xff);
-
-    *p++ = 0; // padding;
+    *p++ = (unsigned char) ((r->fcgi.dataLen >> 8) & 0xff);
+    *p++ = (unsigned char) ((r->fcgi.dataLen) & 0xff);
+    *p++ = r->fcgi.paddingLen;
     *p = 0;
     
     r->cgi->p = r->cgi->buf;
@@ -95,16 +94,14 @@ void fcgi_set_param(Connect *r)
 
     if (r->cgi->len_buf > 0)
     {
-        r->cgi->dir = OUT;
+        r->fcgi.dataLen = r->cgi->len_buf;
         fcgi_set_header(r, FCGI_PARAMS);
     }
     else
     {
+        r->fcgi.dataLen = r->cgi->len_buf;
         fcgi_set_header(r, FCGI_PARAMS);
-        r->operation = CGI_END_PARAMS;
     }
-
-    r->cgi->dir = OUT;
 }
 //======================================================================
 int fcgi_create_connect(Connect *req)
@@ -148,7 +145,7 @@ int fcgi_create_connect(Connect *req)
     return 0;
 }
 //======================================================================
-static void fcgi_create_param(Connect *req)
+void fcgi_create_param(Connect *req)
 {
     int i = 0;
     Param param;
@@ -317,7 +314,7 @@ static void fcgi_create_param(Connect *req)
 */
     //fprintf(stderr, "size_par=%d\n", req->fcgi.size_par);
     //----------------------------------------------
-    req->cgi->len_buf = 8;
+    req->fcgi.dataLen = req->cgi->len_buf = 8;
     fcgi_set_header(req, FCGI_BEGIN_REQUEST);
     char *p = req->cgi->buf + 8;
     *(p++) = (unsigned char) ((FCGI_RESPONDER >> 8) & 0xff);
@@ -329,64 +326,67 @@ static void fcgi_create_param(Connect *req)
     *(p++) = 0;
     *(p++) = 0;
 
-    req->operation = FCGI_BEGIN;
+    req->cgi->status.fcgi = FASTCGI_BEGIN;
+    req->timeout = conf->TimeoutCGI;
+    req->sock_timer = 0;
 }
 //======================================================================
-int fcgi_stdin(Connect *req)
+int fcgi_stdin(Connect *r)
 {
-    if (req->cgi->dir == IN)
+    if (r->cgi->dir == SOCK_IN)
     {
-        int rd = (req->cgi->len_post > req->cgi->size_buf) ? req->cgi->size_buf : req->cgi->len_post;
-        req->cgi->len_buf = read(req->clientSocket, req->cgi->buf + 8, rd);
-        if (req->cgi->len_buf == -1)
+        int rd = (r->cgi->len_post > r->cgi->size_buf) ? r->cgi->size_buf : r->cgi->len_post;
+        r->cgi->len_buf = read(r->clientSocket, r->cgi->buf + 8, rd);
+        if (r->cgi->len_buf == -1)
         {
-            print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
+            print_err(r, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
             return -1;
         }
-        else if (req->cgi->len_buf == 0)
+        else if (r->cgi->len_buf == 0)
         {
-            print_err(req, "<%s:%d> Error read()=0\n", __func__, __LINE__);
+            print_err(r, "<%s:%d> Error read()=0\n", __func__, __LINE__);
             return -1;
         }
 
-        req->cgi->len_post -= req->cgi->len_buf;
-        fcgi_set_header(req, FCGI_STDIN);
-        req->cgi->dir = OUT;
+        r->cgi->len_post -= r->cgi->len_buf;
+        r->fcgi.dataLen = r->cgi->len_buf;
+        fcgi_set_header(r, FCGI_STDIN);
+        r->cgi->dir = CGI_OUT;
     }
-    else if (req->cgi->dir == OUT)
+    else if (r->cgi->dir == CGI_OUT)
     {
-        int n = write(req->fcgi.fd, req->cgi->p, req->cgi->len_buf);
+        int n = write(r->fcgi.fd, r->cgi->p, r->cgi->len_buf);
         if (n == -1)
         {
-            print_err(req, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
+            print_err(r, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
             if (errno == EAGAIN)
             {
-                req->sock_timer = 0;
+                r->sock_timer = 0;
                 return 0;
             }
             return -1;
         }
 
-        req->cgi->p += n;
-        req->cgi->len_buf -= n;
-        if (req->cgi->len_buf == 0)
-            req->cgi->dir = IN;
+        r->cgi->p += n;
+        r->cgi->len_buf -= n;
+        if (r->cgi->len_buf == 0)
+            r->cgi->dir = SOCK_IN;
     }
 
     return 0;
 }
-//=====================================================================================================================
+//======================================================================
 void fcgi_stdout(Connect *r)
 {
-    if (r->cgi->dir == IN)
+    if (r->cgi->dir == CGI_IN)
     {
-        if ((r->cgi->status == READ_CONTENT) || 
-            (r->cgi->status == READ_ERROR) ||
-            (r->cgi->status == FCGI_CLOSE))
+        if ((r->cgi->status.fcgi == FASTCGI_SEND_ENTITY) || 
+            (r->cgi->status.fcgi == FASTCGI_READ_ERROR) ||
+            (r->cgi->status.fcgi == FASTCGI_CLOSE))
         {
             if (r->fcgi.dataLen == 0)
             {
-                r->cgi->status = READ_PADDING;
+                r->cgi->status.fcgi = FASTCGI_READ_PADDING;
                 return;
             }
 
@@ -417,9 +417,9 @@ void fcgi_stdout(Connect *r)
                 return;
             }
 
-            if (r->cgi->status == READ_CONTENT)
+            if (r->cgi->status.fcgi == FASTCGI_SEND_ENTITY)
             {
-                r->cgi->dir = OUT;
+                r->cgi->dir = SOCK_OUT;
                 r->fcgi.dataLen -= r->cgi->len_buf;
                 if (r->mode_send == CHUNK)
                 {
@@ -429,19 +429,19 @@ void fcgi_stdout(Connect *r)
                 else
                     r->cgi->p = r->cgi->buf + 8;
             }
-            else if (r->cgi->status == READ_ERROR)
+            else if (r->cgi->status.fcgi == FASTCGI_READ_ERROR)
             {
                 r->fcgi.dataLen -= r->cgi->len_buf;
                 if (r->fcgi.dataLen == 0)
                 {
-                    r->cgi->status = READ_PADDING;
+                    r->cgi->status.fcgi = FASTCGI_READ_PADDING;
                 }
                 *(r->cgi->buf + 8 + r->cgi->len_buf) = 0;
                 fprintf(stderr, "%s\n", r->cgi->buf + 8);
                 if (r->fcgi.dataLen == 0)
                     fprintf(stderr, "\n");
             }
-            else if (r->cgi->status == FCGI_CLOSE)
+            else if (r->cgi->status.fcgi == FASTCGI_CLOSE)
             {
                 r->fcgi.dataLen -= r->cgi->len_buf;
                 if (r->fcgi.dataLen == 0)
@@ -454,15 +454,17 @@ void fcgi_stdout(Connect *r)
                     }
                     else
                     {
+                        r->mode_send = CHUNK_END;
                         r->cgi->len_buf = 0;
                         cgi_set_size_chunk(r);
-                        r->cgi->dir = OUT;
-                        r->mode_send = CHUNK_END;
+                        r->cgi->dir = SOCK_OUT;
+                        r->timeout = conf->Timeout;
+                        r->sock_timer = 0;
                     }
                 }
             }
         }
-        else if (r->cgi->status == READ_PADDING)
+        else if (r->cgi->status.fcgi == FASTCGI_READ_PADDING)
         {
             if (r->fcgi.paddingLen > 0)
             {
@@ -495,13 +497,14 @@ void fcgi_stdout(Connect *r)
 
             if (r->fcgi.paddingLen == 0)
             {
-                r->cgi->status = FCGI_READ_HEADER;
+                r->timeout = conf->TimeoutCGI;
+                r->cgi->status.fcgi = FASTCGI_READ_HEADER;
                 r->fcgi.ptr_header = r->cgi->buf;
                 r->fcgi.len_header = 0;
             }
         }
     }
-    else if (r->cgi->dir == OUT)
+    else if (r->cgi->dir == SOCK_OUT)
     {
         int ret = write(r->clientSocket, r->cgi->p, r->cgi->len_buf);
         if (ret == -1)
@@ -530,15 +533,19 @@ void fcgi_stdout(Connect *r)
             {
                 if (r->fcgi.paddingLen == 0)
                 {
-                    r->cgi->status = FCGI_READ_HEADER;
+                    r->cgi->status.fcgi = FASTCGI_READ_HEADER;
                     r->fcgi.ptr_header = r->cgi->buf;
                     r->fcgi.len_header = 0;
                 }
                 else
-                    r->cgi->status = READ_PADDING;
+                {
+                    r->cgi->status.fcgi = FASTCGI_READ_PADDING;
+                }
             }
 
-            r->cgi->dir = IN;
+            r->cgi->dir = CGI_IN;
+            r->timeout = conf->TimeoutCGI;
+            r->sock_timer = 0;
         }
     }
 }
@@ -591,7 +598,8 @@ int fcgi_read_http_headers(Connect *r)
     n = cgi_find_empty_line(r);
     if (n == 1) // empty line found
     {
-        r->cgi->status = SEND_HEADERS;
+        r->cgi->status.fcgi = FASTCGI_SEND_HTTP_HEADERS;
+        r->timeout = conf->Timeout;
         r->fcgi.http_headers_received = true;
         r->sock_timer = 0;
         return r->cgi->len_buf;
@@ -621,7 +629,8 @@ int write_to_fcgi(Connect* r)
         }
         else
         {
-            print_err(r, "<%s:%d> Error write to fcgi: %s\n", __func__, __LINE__, strerror(errno));
+            print_err(r, "<%s:%d> Error write to fcgi: %s, %p, %p - %p, %d\n", 
+                    __func__, __LINE__, strerror(errno), r->cgi->p, r->cgi->buf, r->cgi->buf + 4096, r->cgi->len_buf);
             return -1;
         }
     }
@@ -650,7 +659,7 @@ int fcgi_read_header(Connect* r)
                 r->sock_timer = 0;
                 return 0;
             }
-            
+            print_err(r, "<%s:%d> Error fcgi_read_header(): %s\n", __func__, __LINE__, strerror(errno));
             if (n == 0)
                 print_err(r, "<%s:%d> Error read from fcgi: read()=0\n", __func__, __LINE__);
             r->err = -1;
@@ -701,7 +710,9 @@ int get_sock_fcgi(Connect *req, const char *script)
     {
         fcgi_sock = create_fcgi_socket(ps->addr.c_str());
         if (fcgi_sock < 0)
+        {
             fcgi_sock = -RS502;
+        }
     }
     else
     {
@@ -714,27 +725,14 @@ int get_sock_fcgi(Connect *req, const char *script)
 //======================================================================
 void fcgi_set_poll_list(Connect *r, int *i)
 {
-    if (r->operation == CGI_CONNECT)
-    {
-        if (fcgi_create_connect(r))
-        {
-            r->err = -RS502;
-            cgi_del_from_list(r);
-            end_response(r);
-            return;
-        }
-
-        fcgi_create_param(r);
-    }
-
-    if (r->operation == FCGI_BEGIN)
+    if (r->cgi->status.fcgi == FASTCGI_BEGIN)
     {
         cgi_poll_fd[*i].fd = r->fcgi.fd;
         cgi_poll_fd[*i].events = POLLOUT;
     }
-    else if (r->operation == CGI_PARAMS)
+    else if (r->cgi->status.fcgi == FASTCGI_PARAMS)
     {
-        if (r->cgi->dir == IN)
+        if (r->cgi->len_buf == 0)
         {
             fcgi_set_param(r);
         }
@@ -742,177 +740,197 @@ void fcgi_set_poll_list(Connect *r, int *i)
         cgi_poll_fd[*i].fd = r->fcgi.fd;
         cgi_poll_fd[*i].events = POLLOUT;
     }
-    else if (r->operation == CGI_END_PARAMS)
+    else if (r->cgi->status.fcgi == FASTCGI_STDIN)
     {
-        cgi_poll_fd[*i].fd = r->fcgi.fd;
-        cgi_poll_fd[*i].events = POLLOUT;
-    }
-    else if (r->operation == CGI_STDIN)
-    {
-        if (r->lenTail > 0)
+        if (r->cgi->dir == SOCK_IN)
         {
-            if (r->cgi->dir == IN)
+            if (r->cgi->len_post > 0)
             {
-                if (r->lenTail > r->cgi->size_buf)
-                    r->cgi->len_buf = r->cgi->size_buf;
-                else
-                    r->cgi->len_buf = r->lenTail;
-                memcpy(r->cgi->buf + 8, r->tail, r->cgi->len_buf);
-                r->lenTail -= r->cgi->len_buf;
-                if (r->lenTail == 0)
-                    r->tail = NULL;
-                else
-                    r->tail += r->cgi->len_buf;
+                if (r->lenTail > 0)
+                {
+                    if (r->lenTail > r->cgi->size_buf)
+                        r->cgi->len_buf = r->cgi->size_buf;
+                    else
+                        r->cgi->len_buf = r->lenTail;
+                    memcpy(r->cgi->buf + 8, r->tail, r->cgi->len_buf);
+                    r->lenTail -= r->cgi->len_buf;
+                    r->cgi->len_post -= r->cgi->len_buf;
+                    if (r->lenTail == 0)
+                        r->tail = NULL;
+                    else
+                        r->tail += r->cgi->len_buf;
 
-                fcgi_set_header(r, FCGI_STDIN);
-                r->cgi->dir = OUT;
+                    r->fcgi.dataLen = r->cgi->len_buf;
+                    fcgi_set_header(r, FCGI_STDIN);
+                    r->sock_timer = 0;
+                    r->cgi->dir = CGI_OUT;
+                    cgi_poll_fd[*i].fd = r->fcgi.fd;
+                    cgi_poll_fd[*i].events = POLLOUT;
+                }
+                else
+                {
+                    r->sock_timer = 0;
+                    r->cgi->dir = SOCK_IN;
+                    cgi_poll_fd[*i].fd = r->clientSocket;
+                    cgi_poll_fd[*i].events = POLLIN;
+                }
             }
-            cgi_poll_fd[*i].fd = r->fcgi.fd;
-            cgi_poll_fd[*i].events = POLLOUT;
-        }
-        else if (r->cgi->dir == IN)
-        {
-            if (r->cgi->len_post <= 0)
+            else
             {
-                r->operation = CGI_END_STDIN;
                 r->cgi->len_buf = 0;
-                fcgi_set_header(r, FCGI_STDIN);
-                r->cgi->dir = OUT;
+                r->fcgi.dataLen = r->cgi->len_buf;
+                fcgi_set_header(r, FCGI_STDIN);  // post data = 0
+                r->sock_timer = 0;
+                r->cgi->dir = CGI_OUT;
+                cgi_poll_fd[*i].fd = r->fcgi.fd;
+                cgi_poll_fd[*i].events = POLLOUT;
             }
-
-            cgi_poll_fd[*i].fd = r->clientSocket;
-            cgi_poll_fd[*i].events = POLLIN;
         }
-        else if (r->cgi->dir == OUT)
+        else if (r->cgi->dir == CGI_OUT)
         {
             cgi_poll_fd[*i].fd = r->fcgi.fd;
             cgi_poll_fd[*i].events = POLLOUT;
         }
     }
-    else if (r->operation == CGI_END_STDIN)
-    {
-        r->cgi->dir = OUT;
-        cgi_poll_fd[*i].fd = r->fcgi.fd;
-        cgi_poll_fd[*i].events = POLLOUT;
-    }
-    else if (r->operation == CGI_STDOUT)//===================================================
+    else //======================CGI_STDOUT=============================!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     {
         if (r->fcgi.http_headers_received == false)
         {
+            r->timeout = conf->TimeoutCGI;
             if (r->fcgi.dataLen == 0)
             {
                 if (r->fcgi.paddingLen == 0)
                 {
-                    r->cgi->status = FCGI_READ_HEADER;
+                    r->timeout = conf->TimeoutCGI;
+                    r->cgi->status.fcgi = FASTCGI_READ_HEADER;
                     r->fcgi.ptr_header = r->cgi->buf;
                     r->fcgi.len_header = 0;
                 }
                 else
-                    r->cgi->status = READ_PADDING;
+                    r->cgi->status.fcgi = FASTCGI_READ_PADDING;
             }
             else
-                r->cgi->status = READ_HEADERS;
+                r->cgi->status.fcgi = FASTCGI_READ_HTTP_HEADERS;
         }
 
-        if (r->cgi->status == FCGI_READ_HEADER)
         {
-            cgi_poll_fd[*i].fd = r->fcgi.fd;
-            cgi_poll_fd[*i].events = POLLIN;
-        }
-        else if (r->cgi->status == READ_HEADERS)
-        {
-            cgi_poll_fd[*i].fd = r->fcgi.fd;
-            cgi_poll_fd[*i].events = POLLIN;
-        }
-        else if (r->cgi->status == SEND_HEADERS)
-        {
-            cgi_poll_fd[*i].fd = r->clientSocket;
-            cgi_poll_fd[*i].events = POLLOUT;
-        }
-        else if (r->cgi->status == READ_CONTENT)
-        {
-            if (r->lenTail > 0)
+            if (r->cgi->status.fcgi == FASTCGI_READ_HEADER)
             {
-                if (r->cgi->dir == IN)
-                {
-                    int len = (r->lenTail > r->cgi->size_buf) ? r->cgi->size_buf : r->lenTail;
-                    memmove(r->cgi->buf + 8, r->tail, len);
-                    r->lenTail -= len;
-                    if (r->lenTail == 0)
-                        r->tail = NULL;
-                    else
-                        r->tail += len;
-
-                    r->cgi->len_buf = len;
-                    if (r->mode_send == CHUNK)
-                    {
-                        if (cgi_set_size_chunk(r))
-                        {
-                            r->err = -1;
-                            cgi_del_from_list(r);
-                            end_response(r);
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        r->cgi->p = r->cgi->buf + 8;
-                    }
-                    r->cgi->dir = OUT;
-
-                    cgi_poll_fd[*i].fd = r->clientSocket;
-                    cgi_poll_fd[*i].events = POLLOUT;
-                }
+                cgi_poll_fd[*i].fd = r->fcgi.fd;
+                cgi_poll_fd[*i].events = POLLIN;
             }
-            else
+            else if (r->cgi->status.fcgi == FASTCGI_READ_HTTP_HEADERS)
             {
-                if (r->cgi->dir == IN)
-                {
-                    if (r->fcgi.dataLen == 0)
-                    {
-                        if (r->fcgi.paddingLen == 0)
-                        {
-                            r->cgi->status = FCGI_READ_HEADER;
-                            r->fcgi.ptr_header = r->cgi->buf;
-                            r->fcgi.len_header = 0;
-                        }
-                        else
-                        {
-                            r->cgi->status = READ_PADDING;
-                            r->cgi->dir = IN;
-                        }
-                    }
-                    cgi_poll_fd[*i].fd = r->fcgi.fd;
-                    cgi_poll_fd[*i].events = POLLIN;
-                }
-                else if (r->cgi->dir == OUT)
-                {
-                    cgi_poll_fd[*i].fd = r->clientSocket;
-                    cgi_poll_fd[*i].events = POLLOUT;
-                }
+                cgi_poll_fd[*i].fd = r->fcgi.fd;
+                cgi_poll_fd[*i].events = POLLIN;
             }
-        }
-        else if (r->cgi->status == READ_ERROR)
-        {
-            cgi_poll_fd[*i].fd = r->fcgi.fd;
-            cgi_poll_fd[*i].events = POLLIN;
-        }
-        else if (r->cgi->status == READ_PADDING)
-        {
-            cgi_poll_fd[*i].fd = r->fcgi.fd;
-            cgi_poll_fd[*i].events = POLLIN;
-        }
-        else if (r->cgi->status == FCGI_CLOSE)
-        {
-            if (r->mode_send == CHUNK_END)
+            else if (r->cgi->status.fcgi == FASTCGI_SEND_HTTP_HEADERS)
             {
                 cgi_poll_fd[*i].fd = r->clientSocket;
                 cgi_poll_fd[*i].events = POLLOUT;
             }
-            else
+            else if (r->cgi->status.fcgi == FASTCGI_SEND_ENTITY)
+            {
+                if (r->lenTail > 0)
+                {
+                    if (r->cgi->dir == CGI_IN)
+                    {
+                        int len = (r->lenTail > r->cgi->size_buf) ? r->cgi->size_buf : r->lenTail;
+                        memmove(r->cgi->buf + 8, r->tail, len);
+                        r->lenTail -= len;
+                        if (r->lenTail == 0)
+                            r->tail = NULL;
+                        else
+                            r->tail += len;
+
+                        r->cgi->len_buf = len;
+                        if (r->mode_send == CHUNK)
+                        {
+                            if (cgi_set_size_chunk(r))
+                            {
+                                r->err = -1;
+                                cgi_del_from_list(r);
+                                end_response(r);
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            r->cgi->p = r->cgi->buf + 8;
+                        }
+                        r->cgi->dir = SOCK_OUT;
+                        r->timeout = conf->Timeout;
+                        r->sock_timer = 0;
+
+                        cgi_poll_fd[*i].fd = r->clientSocket;
+                        cgi_poll_fd[*i].events = POLLOUT;
+                    }
+                }
+                else
+                {
+                    if (r->cgi->dir == CGI_IN)
+                    {
+                        if (r->fcgi.dataLen == 0)
+                        {
+                            if (r->fcgi.paddingLen == 0)
+                            {
+                                r->timeout = conf->TimeoutCGI;
+                                r->cgi->status.fcgi = FASTCGI_READ_HEADER;
+                                r->fcgi.ptr_header = r->cgi->buf;
+                                r->fcgi.len_header = 0;
+                            }
+                            else
+                            {
+                                r->cgi->status.fcgi = FASTCGI_READ_PADDING;
+                            }
+
+                            r->cgi->dir = CGI_IN;
+                            r->timeout = conf->TimeoutCGI;
+                            r->sock_timer = 0;
+                        }
+                        cgi_poll_fd[*i].fd = r->fcgi.fd;
+                        cgi_poll_fd[*i].events = POLLIN;
+                    }
+                    else if (r->cgi->dir == SOCK_OUT)
+                    {
+                        cgi_poll_fd[*i].fd = r->clientSocket;
+                        cgi_poll_fd[*i].events = POLLOUT;
+                    }
+                }
+            }
+            else if (r->cgi->status.fcgi == FASTCGI_READ_ERROR)
             {
                 cgi_poll_fd[*i].fd = r->fcgi.fd;
                 cgi_poll_fd[*i].events = POLLIN;
+            }
+            else if (r->cgi->status.fcgi == FASTCGI_READ_PADDING)
+            {
+                cgi_poll_fd[*i].fd = r->fcgi.fd;
+                cgi_poll_fd[*i].events = POLLIN;
+            }
+            else if (r->cgi->status.fcgi == FASTCGI_CLOSE)
+            {
+                if (r->mode_send == CHUNK_END)
+                {
+                    cgi_poll_fd[*i].fd = r->clientSocket;
+                    cgi_poll_fd[*i].events = POLLOUT;
+                }
+                else
+                {
+                    cgi_poll_fd[*i].fd = r->fcgi.fd;
+                    cgi_poll_fd[*i].events = POLLIN;
+                }
+            }
+            else
+            {
+                print_err(r, "<%s:%d> ??? Error status=%d\n", __func__, __LINE__, r->cgi->status.fcgi);
+                if (r->cgi->status.fcgi <= FASTCGI_READ_HTTP_HEADERS)
+                    r->err = -RS502;
+                else
+                    r->err = -1;
+                cgi_del_from_list(r);
+                end_response(r);
+                return;
             }
         }
     }
@@ -921,16 +939,15 @@ void fcgi_set_poll_list(Connect *r, int *i)
 //======================================================================
 void fcgi_(Connect* r)
 {
-    if (r->operation == FCGI_BEGIN)
+    if (r->cgi->status.fcgi == FASTCGI_BEGIN)
     {
         int ret = write_to_fcgi(r);
         if (ret > 0)
         {
+            r->sock_timer = 0;
             if (r->cgi->len_buf == 0)
             {
-                r->operation = CGI_PARAMS;
-                r->cgi->dir = IN;
-                r->cgi->p = r->cgi->buf + 8;
+                r->cgi->status.fcgi = FASTCGI_PARAMS;
             }
         }
         else if (ret == -1)
@@ -940,15 +957,20 @@ void fcgi_(Connect* r)
             end_response(r);
         }
     }
-    else if (r->operation == CGI_PARAMS)
+    else if (r->cgi->status.fcgi == FASTCGI_PARAMS)
     {
         int ret = write_to_fcgi(r);
         if (ret > 0)
         {
-            if (r->cgi->len_buf == 0)
+            r->sock_timer = 0;
+            if ((r->cgi->len_buf == 0) && (r->fcgi.dataLen == 0)) // end params
             {
-                r->cgi->dir = IN;
-                r->cgi->p = r->cgi->buf + 8;
+                r->cgi->status.fcgi = FASTCGI_STDIN;
+                r->cgi->dir = SOCK_IN;
+                if (r->req_hd.reqContentLength > 0)
+                    r->cgi->len_post = r->req_hd.reqContentLength;
+                else
+                    r->cgi->len_post = 0;
             }
         }
         else if (ret == -1)
@@ -958,63 +980,34 @@ void fcgi_(Connect* r)
             end_response(r);
         }
     }
-    else if (r->operation == CGI_END_PARAMS)
-    {
-        int ret = write_to_fcgi(r);
-        if (ret > 0)
-        {
-            if (r->cgi->len_buf == 0)
-            {
-                r->cgi->len_post = r->req_hd.reqContentLength - r->lenTail;
-                r->operation = CGI_STDIN;
-                r->cgi->dir = IN;
-            }
-        }
-        else if (ret == -1)
-        {
-            r->err = -1;
-            cgi_del_from_list(r);
-            end_response(r);
-        }
-    }
-    else if (r->operation == CGI_STDIN)
+    else if (r->cgi->status.fcgi == FASTCGI_STDIN)
     {
         int n = fcgi_stdin(r);
         if (n < 0)
         {
-            print_err(r, "<%s:%d> Error cgi_stdin\n", __func__, __LINE__);
-            r->err = -RS502;
-            cgi_del_from_list(r);
-            end_response(r);
-        }
-    }
-    else if (r->operation == CGI_END_STDIN)
-    {
-        int n = fcgi_stdin(r);
-        if (n < 0)
-        {
-            print_err(r, "<%s:%d> Error cgi_stdin\n", __func__, __LINE__);
             r->err = -RS502;
             cgi_del_from_list(r);
             end_response(r);
         }
         else
         {
-            if (r->cgi->len_buf == 0)
+            if ((r->cgi->len_buf == 0) && (r->fcgi.dataLen == 0)) //end post data
             {
-                r->operation = CGI_STDOUT;
-                r->fcgi.http_headers_received = false;
+                r->cgi->status.fcgi = FASTCGI_READ_HEADER;
                 r->fcgi.dataLen = 0;
                 r->fcgi.paddingLen = 0;
+
+                r->fcgi.http_headers_received = false;
                 r->tail = NULL;
                 r->p_newline = r->cgi->p = r->cgi->buf + 8;
                 r->cgi->len_buf = 0;
+                return;
             }
         }
     }
-    else if (r->operation == CGI_STDOUT)//==================================================================
+    else//====================== FASTCGI_STDOUT=============================
     {
-        if (r->cgi->status == FCGI_READ_HEADER)
+        if (r->cgi->status.fcgi == FASTCGI_READ_HEADER)
         {
             int ret = fcgi_read_header(r);
             if (ret == 8)
@@ -1027,19 +1020,19 @@ void fcgi_(Connect* r)
                         {
                             if (r->fcgi.dataLen > 0)
                             {
-                                r->cgi->status = READ_CONTENT;
+                                r->cgi->status.fcgi = FASTCGI_SEND_ENTITY;
                             }
                             else
-                                r->cgi->status = READ_PADDING;
+                                r->cgi->status.fcgi = FASTCGI_READ_PADDING;
                         }
                     }
                     break;
                     case FCGI_STDERR:
-                        r->cgi->status = READ_ERROR;
+                        r->cgi->status.fcgi = FASTCGI_READ_ERROR;
                         break;
                     case FCGI_END_REQUEST:
                     case FCGI_ABORT_REQUEST:
-                        r->cgi->status = FCGI_CLOSE;
+                        r->cgi->status.fcgi = FASTCGI_CLOSE;
                         break;
                     default:
                         print_err(r, "<%s:%d> Error type=%d\n", __func__, __LINE__, r->fcgi.fcgi_type);
@@ -1049,7 +1042,7 @@ void fcgi_(Connect* r)
                 }
             }
         }
-        else if (r->cgi->status == READ_HEADERS)
+        else if (r->cgi->status.fcgi == FASTCGI_READ_HTTP_HEADERS)
         {
             int ret = fcgi_read_http_headers(r);
             if (ret > 0)
@@ -1066,18 +1059,18 @@ void fcgi_(Connect* r)
                 {
                     r->resp_headers.p = r->resp_headers.s.c_str();
                     r->resp_headers.len = r->resp_headers.s.size();
-                    r->cgi->status = SEND_HEADERS;
+                    r->cgi->status.fcgi = FASTCGI_SEND_HTTP_HEADERS;
+                    r->timeout = conf->Timeout;
                 }
             }
             else if (ret < 0)
             {
-                print_err(r, "<%s:%d> Error fcgi_read_http_headers()\n", __func__, __LINE__);
                 r->err = -RS502;
                 cgi_del_from_list(r);
                 end_response(r);
             }
         }
-        else if (r->cgi->status == SEND_HEADERS)
+        else if (r->cgi->status.fcgi == FASTCGI_SEND_HTTP_HEADERS)
         {
             if (r->resp_headers.len > 0)
             {
@@ -1108,7 +1101,7 @@ void fcgi_(Connect* r)
                         }
                         else
                         {
-                            r->cgi->status = READ_CONTENT;
+                            r->cgi->status.fcgi = FASTCGI_SEND_ENTITY;
                             r->sock_timer = 0;
                             if (r->lenTail > 0)
                             {
@@ -1119,7 +1112,9 @@ void fcgi_(Connect* r)
                                     r->tail = NULL;
                                 else
                                     r->tail += r->cgi->len_buf;
-                                r->cgi->dir = OUT;
+                                r->cgi->dir = SOCK_OUT;
+                                r->timeout = conf->Timeout;
+                                r->sock_timer = 0;
                                 if (r->mode_send == CHUNK)
                                 {
                                     if (cgi_set_size_chunk(r))
@@ -1133,7 +1128,11 @@ void fcgi_(Connect* r)
                                     r->cgi->p = r->cgi->buf + 8;
                             }
                             else
-                                r->cgi->dir = IN;
+                            {
+                                r->cgi->dir = CGI_IN;
+                                r->timeout = conf->TimeoutCGI;
+                                r->sock_timer = 0;
+                            }
                         }
                     }
                     else
@@ -1141,21 +1140,25 @@ void fcgi_(Connect* r)
                 }
             }
         }
-        else if (r->cgi->status == READ_CONTENT)
+        else if (r->cgi->status.fcgi == FASTCGI_SEND_ENTITY)
         {
             fcgi_stdout(r);
         }
-        else if ((r->cgi->status == READ_ERROR) ||
-                 (r->cgi->status == READ_PADDING))
+        else if ((r->cgi->status.fcgi == FASTCGI_READ_ERROR) ||
+                (r->cgi->status.fcgi == FASTCGI_READ_PADDING))
         {
-            r->cgi->dir = IN;
+            r->cgi->dir = CGI_IN;
+            r->timeout = conf->TimeoutCGI;
+            r->sock_timer = 0;
             fcgi_stdout(r);
         }
-        else if (r->cgi->status == FCGI_CLOSE)
+        else if (r->cgi->status.fcgi == FASTCGI_CLOSE)
         {
             if (r->mode_send == CHUNK_END)
             {
-                r->cgi->dir = OUT;
+                r->cgi->dir = SOCK_OUT;
+                r->timeout = conf->Timeout;
+                r->sock_timer = 0;
                 fcgi_stdout(r);
                 if (r->cgi->len_buf == 0)
                 {
@@ -1165,16 +1168,28 @@ void fcgi_(Connect* r)
             }
             else
             {
-                r->cgi->dir = IN;
+                r->cgi->dir = CGI_IN;
+                r->timeout = conf->TimeoutCGI;
+                r->sock_timer = 0;
                 fcgi_stdout(r);
             }
         }
+        else
+        {
+            print_err(r, "<%s:%d> Error operation=%d\n", __func__, __LINE__, r->operation);
+            r->err = -1;
+            cgi_del_from_list(r);
+            end_response(r);
+        }
     }
+}
+//======================================================================
+int timeout_fcgi(Connect *r)
+{
+    if ((r->cgi->status.fcgi == FASTCGI_STDIN) && (r->cgi->dir == CGI_OUT))
+        return -RS504;
+    else if (r->cgi->status.fcgi == FASTCGI_READ_HTTP_HEADERS)
+        return -RS504;
     else
-    {
-        print_err(r, "<%s:%d> Error operation=%d\n", __func__, __LINE__, r->operation);
-        r->err = -1;
-        cgi_del_from_list(r);
-        end_response(r);
-    }
+        return -1;
 }

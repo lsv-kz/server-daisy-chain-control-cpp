@@ -130,7 +130,7 @@ int send_part_file(Connect *req)
 //======================================================================
 static void del_from_list(Connect *r)
 {
-    if (r->event == POLLOUT)
+    if (r->source_entity == FROM_FILE)
         close(r->fd);
     else
         get_time(r->sTime);
@@ -305,7 +305,7 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
                 }
                 else if (wr < 0)
                 {
-                    r->err = wr;
+                    r->err = -1;
                     r->req_hd.iReferer = MAX_HEADERS - 1;
                     r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
                     del_from_list(r);
@@ -480,32 +480,36 @@ void push_send_html(Connect *r)
     r->source_entity = FROM_DATA_BUFFER;
     r->operation = SEND_RESP_HEADERS;
     r->sock_timer = 0;
-    r->prev = NULL;
+    r->next = NULL;
 mtx_.lock();
-    r->next = wait_list_start;
+    r->prev = wait_list_end;
     if (wait_list_start)
-        wait_list_start->prev = r;
-    wait_list_start = r;
-    if (!wait_list_end)
+    {
+        wait_list_end->next = r;
         wait_list_end = r;
+    }
+    else
+        wait_list_start = wait_list_end = r;
 mtx_.unlock();
     cond_.notify_one();
 }
 //======================================================================
-void push_pollin_list(Connect *req)
+void push_pollin_list(Connect *r)
 {
-    req->event = POLLIN;
-    req->sock_timer = 0;
-    req->next = NULL;
+    r->event = POLLIN;
+    r->source_entity = ENTITY_NONE;
+    r->operation = READ_REQUEST;
+    r->sock_timer = 0;
+    r->next = NULL;
 mtx_.lock();
-    req->prev = wait_list_end;
+    r->prev = wait_list_end;
     if (wait_list_start)
     {
-        wait_list_end->next = req;
-        wait_list_end = req;
+        wait_list_end->next = r;
+        wait_list_end = r;
     }
     else
-        wait_list_start = wait_list_end = req;
+        wait_list_start = wait_list_end = r;
 mtx_.unlock();
     cond_.notify_one();
 }

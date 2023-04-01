@@ -23,7 +23,7 @@ void Connect::init()
     respStatus = 0;
     mode_send = NO_CHUNK;
 
-    cgi_type = NONE;
+    cgi_type = CGI_TYPE_NONE;
     scriptName = NULL;
 
     hdrs = "";

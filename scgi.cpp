@@ -442,7 +442,7 @@ int scgi_set_param(Connect *r)
     return r->cgi->len_buf;
 }
 //======================================================================
-void scgi_(Connect* r)
+void scgi_worker(Connect* r)
 {
     if (r->cgi->status.scgi == SCGI_PARAMS)
     {

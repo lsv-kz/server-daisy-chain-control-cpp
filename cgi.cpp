@@ -18,19 +18,19 @@ static unsigned int num_wait, num_work;
 //----------------------------------------------------------------------
 int cgi_set_size_chunk(Connect *req);
 static void cgi_set_poll_list(Connect *r, int*);
-static void cgi_(Connect* r);
+static void cgi_worker(Connect* r);
 void cgi_set_status_readheaders(Connect *r);
 int timeout_cgi(Connect *r);
 int cgi_create_pipes(Connect *req);
 
 void fcgi_set_poll_list(Connect *r, int *i);
-void fcgi_(Connect* r);
+void fcgi_worker(Connect* r);
 int timeout_fcgi(Connect *r);
 int fcgi_create_connect(Connect *req);
 void fcgi_create_param(Connect *req);
 
 void scgi_set_poll_list(Connect *r, int *i);
-void scgi_(Connect* r);
+void scgi_worker(Connect* r);
 int timeout_scgi(Connect *r);
 int scgi_create_connect(Connect *req);
 //======================================================================
@@ -118,7 +118,7 @@ mtx_.lock();
 mtx_.unlock();
 }
 //======================================================================
-static void cgi_set_work_list()
+static void cgi_add_work_list()
 {
 mtx_.lock();
     if ((num_work < conf->MaxCgiProc) && wait_list_end)
@@ -198,7 +198,7 @@ mtx_.lock();
 mtx_.unlock();
 }
 //======================================================================
-static int cgi_set_poll_list()
+static int set_poll_list()
 {
     int i = 0;
     time_t t = time(NULL);
@@ -390,19 +390,17 @@ static void cgi_worker(int num_chld, int npoll, RequestManager *ReqMan)
         if (r->poll_status == WAIT)
             continue;
 
-        if ((r->cgi_type == CGI) || 
-            (r->cgi_type == PHPCGI))
+        if ((r->cgi_type == CGI) || (r->cgi_type == PHPCGI))
         {
-            cgi_(r);
+            cgi_worker(r);
         }
-        else if ((r->cgi_type == PHPFPM) || 
-            (r->cgi_type == FASTCGI))
+        else if ((r->cgi_type == PHPFPM) || (r->cgi_type == FASTCGI))
         {
-            fcgi_(r);
+            fcgi_worker(r);
         }
         else if (r->cgi_type == SCGI)
         {
-            scgi_(r);
+            scgi_worker(r);
         }
     }
 }
@@ -431,8 +429,8 @@ void cgi_handler(RequestManager *ReqMan)
                 break;
         }
 
-        cgi_set_work_list();
-        int size_poll_list = cgi_set_poll_list();
+        cgi_add_work_list();
+        int size_poll_list = set_poll_list();
         if (size_poll_list > 0)
         {
             int npoll = cgi_poll(num_chld, size_poll_list, ReqMan);
@@ -446,6 +444,7 @@ void cgi_handler(RequestManager *ReqMan)
 //======================================================================
 void push_cgi(Connect *r)
 {
+    r->operation = DYN_PAGE;
     r->respStatus = RS200;
     r->sock_timer = 0;
     r->prev = NULL;
@@ -1046,10 +1045,7 @@ static void cgi_set_poll_list(Connect *r, int *i)
     else
     {
         print_err(r, "<%s:%d> ??? Error status=%d\n", __func__, __LINE__, r->cgi->status.cgi);
-        if (r->cgi->status.cgi <= CGI_READ_HTTP_HEADERS)
-            r->err = -RS502;
-        else
-            r->err = -1;
+        r->err = -1;
         cgi_del_from_list(r);
         end_response(r);
         return;
@@ -1058,7 +1054,7 @@ static void cgi_set_poll_list(Connect *r, int *i)
     (*i)++;
 }
 //======================================================================
-static void cgi_(Connect* r)
+static void cgi_worker(Connect* r)
 {
     if (r->cgi->status.cgi == CGI_STDIN)
     {
@@ -1066,7 +1062,7 @@ static void cgi_(Connect* r)
         if (n < 0)
         {
             print_err(r, "<%s:%d> Error cgi_stdin\n", __func__, __LINE__);
-            r->err = -1;
+            r->err = n;
             cgi_del_from_list(r);
             end_response(r);
         }

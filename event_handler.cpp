@@ -19,6 +19,8 @@ using namespace std;
 // [wait_list] - temporary storage                                           //
 // [work_list] - storage for working connections                             //
 //=============================================================================
+extern const char boundary[] = "---------a9b5r7a4c0a2d5a1b8r3a";
+
 static Connect *work_list_start = NULL;
 static Connect *work_list_end = NULL;
 
@@ -33,8 +35,10 @@ static condition_variable cond_;
 static int close_thr = 0;
 static int size_buf;
 static char *snd_buf;
-
 int send_html(Connect *r);
+int create_multipart_head(Connect *req);
+void set_part(Connect *r);
+int send_headers(Connect *r);
 //======================================================================
 int send_part_file(Connect *req)
 {
@@ -179,7 +183,6 @@ static int set_poll()
     for ( ; r; r = next)
     {
         next = r->next;
-
         if (((t - r->sock_timer) >= r->timeout) && (r->sock_timer != 0))
         {
             print_err(r, "<%s:%d> operation=%d, Timeout = %ld\n", __func__, __LINE__, r->operation, t - r->sock_timer);
@@ -276,7 +279,6 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
                 }
                 else if (wr == -EAGAIN)
                 {
-                    //print_err(r, "<%s:%d> Error SEND_ENTITY: EAGAIN\n", __func__, __LINE__);
                     r->sock_timer = 0;
                 }
                 else if (wr < 0)
@@ -290,6 +292,62 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
                 else // (wr > 0)
                     r->sock_timer = 0;
             }
+            else if (r->source_entity == MULTIPART_ENTITY)
+            {
+                if (r->mp.status == SEND_HEADERS)
+                {
+                    int wr = send_headers(r);
+                    if (wr > 0)
+                    {
+                        r->send_bytes += wr;
+                        if (r->resp_headers.len == 0)
+                        {
+                            r->mp.status = SEND_PART;
+                        }
+                        r->sock_timer = 0;
+                    }
+                    else if (wr == 0)
+                        r->sock_timer = 0;
+                }
+                else if (r->mp.status == SEND_PART)
+                {
+                    int wr = send_part_file(r);
+                    if (wr == 0)
+                    {
+                        r->sock_timer = 0;
+                        r->mp.rg = r->rg.get();
+                        if (r->mp.rg)
+                        {
+                            set_part(r);
+                        }
+                        else
+                        {
+                            r->mp.status = SEND_END;
+                            r->mp.hdr = "";
+                            r->mp.hdr << "\r\n--" << boundary << "--\r\n";
+                            r->resp_headers.len = r->mp.hdr.size();
+                            r->resp_headers.p = r->mp.hdr.c_str();
+                        }
+                    }
+                }
+                else if (r->mp.status == SEND_END)
+                {
+                    int wr = send_headers(r);
+                    if (wr > 0)
+                    {
+                        r->send_bytes += wr;
+                        if (r->resp_headers.len == 0)
+                        {
+                            del_from_list(r);
+                            end_response(r);
+                        }
+                        else
+                            r->sock_timer = 0;
+                    }
+                    else if (wr == 0)
+                        r->sock_timer = 0;
+                }
+            }
             else if (r->source_entity == FROM_DATA_BUFFER)
             {
                 int wr = send_html(r);
@@ -300,7 +358,6 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
                 }
                 else if (wr == -EAGAIN)
                 {
-                    //print_err(r, "<%s:%d> Error SEND_ENTITY: EAGAIN\n", __func__, __LINE__);
                     r->sock_timer = 0;
                 }
                 else if (wr < 0)
@@ -317,27 +374,9 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
         }
         else if (r->operation == SEND_RESP_HEADERS)
         {
-            int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
-            if (wr < 0)
+            int wr = send_headers(r);
+            if (wr > 0)
             {
-                if (errno == EAGAIN)
-                {
-                    //print_err(r, "<%s:%d> Error SEND_RESP_HEADERS: EAGAIN\n", __func__, __LINE__);
-                    r->sock_timer = 0;
-                }
-                else
-                {
-                    r->err = -1;
-                    r->req_hd.iReferer = MAX_HEADERS - 1;
-                    r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-                    del_from_list(r);
-                    end_response(r);
-                }
-            }
-            else if (wr > 0)
-            {
-                r->resp_headers.p += wr;
-                r->resp_headers.len -= wr;
                 if (r->resp_headers.len == 0)
                 {
                     if (r->reqMethod == M_HEAD)
@@ -347,19 +386,42 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
                     }
                     else
                     {
-                        if ((r->source_entity == FROM_DATA_BUFFER) && (r->html.len == 0))
+                        if (r->source_entity == FROM_DATA_BUFFER)
                         {
-                            del_from_list(r);
-                            end_response(r);
+                            if (r->html.len == 0)
+                            {
+                                del_from_list(r);
+                                end_response(r);
+                            }
+                            else
+                            {
+                                r->operation = SEND_ENTITY;
+                                r->sock_timer = 0;
+                            }
                         }
-                        else
+                        else if (r->source_entity == FROM_FILE)
                         {
                             r->operation = SEND_ENTITY;
                             r->sock_timer = 0;
                         }
+                        else if (r->source_entity == MULTIPART_ENTITY)
+                        {
+                            if ((r->mp.rg = r->rg.get()))
+                            {
+                                r->operation = SEND_ENTITY;
+                                r->sock_timer = 0;
+                                set_part(r);
+                            }
+                            else
+                            {
+                                r->err = -1;
+                                del_from_list(r);
+                                close_connect(r);
+                            }
+                        }
                     }
                 }
-                else
+                else if (wr == 0)
                     r->sock_timer = 0;
             }
         }
@@ -368,7 +430,6 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
             int rd = hd_read(r);
             if (rd == -EAGAIN)
             {
-                //print_err(r, "<%s:%d> Error hd_read(): EAGAIN\n", __func__, __LINE__);
                 r->sock_timer = 0;
             }
             else if (rd < 0)
@@ -450,7 +511,7 @@ void event_handler(RequestManager *ReqMan)
     //print_err("*** Exit [%s:proc=%d] ***\n", __func__, num_chld);
 }
 //======================================================================
-void push_pollout_list(Connect *r)
+void push_send_file(Connect *r)
 {
     lseek(r->fd, r->offset, SEEK_SET);
     r->resp_headers.p = r->resp_headers.s.c_str();
@@ -458,6 +519,29 @@ void push_pollout_list(Connect *r)
 
     r->event = POLLOUT;
     r->source_entity = FROM_FILE;
+    r->operation = SEND_RESP_HEADERS;
+    r->sock_timer = 0;
+    r->next = NULL;
+mtx_.lock();
+    r->prev = wait_list_end;
+    if (wait_list_start)
+    {
+        wait_list_end->next = r;
+        wait_list_end = r;
+    }
+    else
+        wait_list_start = wait_list_end = r;
+mtx_.unlock();
+    cond_.notify_one();
+}
+//======================================================================
+void push_send_multipart(Connect *r)
+{
+    r->resp_headers.p = r->resp_headers.s.c_str();
+    r->resp_headers.len = r->resp_headers.s.size();
+    
+    r->event = POLLOUT;
+    r->source_entity = MULTIPART_ENTITY;
     r->operation = SEND_RESP_HEADERS;
     r->sock_timer = 0;
     r->next = NULL;
@@ -494,7 +578,7 @@ mtx_.unlock();
     cond_.notify_one();
 }
 //======================================================================
-void push_pollin_list(Connect *r)
+void push_get_request(Connect *r)
 {
     r->event = POLLIN;
     r->source_entity = ENTITY_NONE;
@@ -538,4 +622,45 @@ int send_html(Connect *r)
         ret = 0;
 
     return ret;
+}
+//======================================================================
+void set_part(Connect *r)
+{
+    r->mp.status = SEND_HEADERS;
+    
+    r->resp_headers.len = create_multipart_head(r);
+    r->resp_headers.p = r->mp.hdr.c_str();
+    
+    r->offset = r->mp.rg->start;
+    r->respContentLength = r->mp.rg->len;
+    lseek(r->fd, r->offset, SEEK_SET);
+}
+//======================================================================
+int send_headers(Connect *r)
+{
+    int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
+    if (wr < 0)
+    {
+        if (errno == EAGAIN)
+        {
+            r->sock_timer = 0;
+            return 0;
+        }
+        else
+        {
+            r->err = -1;
+            r->req_hd.iReferer = MAX_HEADERS - 1;
+            r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+            del_from_list(r);
+            end_response(r);
+            return -1;
+        }
+    }
+    else if (wr > 0)
+    {
+        r->resp_headers.p += wr;
+        r->resp_headers.len -= wr;
+    }
+    
+    return wr;
 }

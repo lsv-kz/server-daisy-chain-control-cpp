@@ -629,8 +629,7 @@ int write_to_fcgi(Connect* r)
         }
         else
         {
-            print_err(r, "<%s:%d> Error write to fcgi: %s, %p, %p - %p, %d\n", 
-                    __func__, __LINE__, strerror(errno), r->cgi->p, r->cgi->buf, r->cgi->buf + 4096, r->cgi->len_buf);
+            print_err(r, "<%s:%d> Error write to fcgi: %s\n", __func__, __LINE__, strerror(errno));
             return -1;
         }
     }
@@ -647,25 +646,25 @@ int write_to_fcgi(Connect* r)
 int fcgi_read_header(Connect* r)
 {
     int n = 0;
-
     if (r->fcgi.len_header < 8)
     {
         int len = 8 - r->fcgi.len_header;
         n = read(r->fcgi.fd, r->fcgi.ptr_header, len);
-        if (n <= 0)
+        if (n < 0)
         {
             if (errno == EAGAIN)
             {
                 r->sock_timer = 0;
                 return 0;
             }
+
             print_err(r, "<%s:%d> Error fcgi_read_header(): %s\n", __func__, __LINE__, strerror(errno));
-            if (n == 0)
-                print_err(r, "<%s:%d> Error read from fcgi: read()=0\n", __func__, __LINE__);
-            r->err = -1;
-            cgi_del_from_list(r);
-            end_response(r);
-            return n;
+            return -1;
+        }
+        else if (n == 0)
+        {
+            print_err(r, "<%s:%d> Error read from fcgi: read()=0\n", __func__, __LINE__);
+            return -1;
         }
     }
     
@@ -794,150 +793,126 @@ void fcgi_set_poll_list(Connect *r, int *i)
     }
     else //======================CGI_STDOUT=============================!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     {
-        if (r->fcgi.http_headers_received == false)
+        if (r->cgi->status.fcgi == FASTCGI_READ_HEADER)
         {
-            r->timeout = conf->TimeoutCGI;
-            if (r->fcgi.dataLen == 0)
+            cgi_poll_fd[*i].fd = r->fcgi.fd;
+            cgi_poll_fd[*i].events = POLLIN;
+        }
+        else if (r->cgi->status.fcgi == FASTCGI_READ_HTTP_HEADERS)
+        {
+            cgi_poll_fd[*i].fd = r->fcgi.fd;
+            cgi_poll_fd[*i].events = POLLIN;
+        }
+        else if (r->cgi->status.fcgi == FASTCGI_SEND_HTTP_HEADERS)
+        {
+            cgi_poll_fd[*i].fd = r->clientSocket;
+            cgi_poll_fd[*i].events = POLLOUT;
+        }
+        else if (r->cgi->status.fcgi == FASTCGI_SEND_ENTITY)
+        {
+            if (r->lenTail > 0)
             {
-                if (r->fcgi.paddingLen == 0)
+                if (r->cgi->dir == CGI_IN)
                 {
-                    r->timeout = conf->TimeoutCGI;
-                    r->cgi->status.fcgi = FASTCGI_READ_HEADER;
-                    r->fcgi.ptr_header = r->cgi->buf;
-                    r->fcgi.len_header = 0;
+                    int len = (r->lenTail > r->cgi->size_buf) ? r->cgi->size_buf : r->lenTail;
+                    memmove(r->cgi->buf + 8, r->tail, len);
+                    r->lenTail -= len;
+                    if (r->lenTail == 0)
+                        r->tail = NULL;
+                    else
+                        r->tail += len;
+
+                    r->cgi->len_buf = len;
+                    if (r->mode_send == CHUNK)
+                    {
+                        if (cgi_set_size_chunk(r))
+                        {
+                            r->err = -1;
+                            cgi_del_from_list(r);
+                            end_response(r);
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        r->cgi->p = r->cgi->buf + 8;
+                    }
+                    r->cgi->dir = SOCK_OUT;
+                    r->timeout = conf->Timeout;
+                    r->sock_timer = 0;
+
+                    cgi_poll_fd[*i].fd = r->clientSocket;
+                    cgi_poll_fd[*i].events = POLLOUT;
                 }
-                else
-                    r->cgi->status.fcgi = FASTCGI_READ_PADDING;
             }
             else
-                r->cgi->status.fcgi = FASTCGI_READ_HTTP_HEADERS;
-        }
-
-        {
-            if (r->cgi->status.fcgi == FASTCGI_READ_HEADER)
             {
-                cgi_poll_fd[*i].fd = r->fcgi.fd;
-                cgi_poll_fd[*i].events = POLLIN;
-            }
-            else if (r->cgi->status.fcgi == FASTCGI_READ_HTTP_HEADERS)
-            {
-                cgi_poll_fd[*i].fd = r->fcgi.fd;
-                cgi_poll_fd[*i].events = POLLIN;
-            }
-            else if (r->cgi->status.fcgi == FASTCGI_SEND_HTTP_HEADERS)
-            {
-                cgi_poll_fd[*i].fd = r->clientSocket;
-                cgi_poll_fd[*i].events = POLLOUT;
-            }
-            else if (r->cgi->status.fcgi == FASTCGI_SEND_ENTITY)
-            {
-                if (r->lenTail > 0)
+                if (r->cgi->dir == CGI_IN)
                 {
-                    if (r->cgi->dir == CGI_IN)
+                    if (r->fcgi.dataLen == 0)
                     {
-                        int len = (r->lenTail > r->cgi->size_buf) ? r->cgi->size_buf : r->lenTail;
-                        memmove(r->cgi->buf + 8, r->tail, len);
-                        r->lenTail -= len;
-                        if (r->lenTail == 0)
-                            r->tail = NULL;
-                        else
-                            r->tail += len;
-
-                        r->cgi->len_buf = len;
-                        if (r->mode_send == CHUNK)
+                        if (r->fcgi.paddingLen == 0)
                         {
-                            if (cgi_set_size_chunk(r))
-                            {
-                                r->err = -1;
-                                cgi_del_from_list(r);
-                                end_response(r);
-                                return;
-                            }
-                        }
-                        else
-                        {
-                            r->cgi->p = r->cgi->buf + 8;
-                        }
-                        r->cgi->dir = SOCK_OUT;
-                        r->timeout = conf->Timeout;
-                        r->sock_timer = 0;
-
-                        cgi_poll_fd[*i].fd = r->clientSocket;
-                        cgi_poll_fd[*i].events = POLLOUT;
-                    }
-                }
-                else
-                {
-                    if (r->cgi->dir == CGI_IN)
-                    {
-                        if (r->fcgi.dataLen == 0)
-                        {
-                            if (r->fcgi.paddingLen == 0)
-                            {
-                                r->timeout = conf->TimeoutCGI;
-                                r->cgi->status.fcgi = FASTCGI_READ_HEADER;
-                                r->fcgi.ptr_header = r->cgi->buf;
-                                r->fcgi.len_header = 0;
-                            }
-                            else
-                            {
-                                r->cgi->status.fcgi = FASTCGI_READ_PADDING;
-                            }
-
-                            r->cgi->dir = CGI_IN;
                             r->timeout = conf->TimeoutCGI;
-                            r->sock_timer = 0;
+                            r->cgi->status.fcgi = FASTCGI_READ_HEADER;
+                            r->fcgi.ptr_header = r->cgi->buf;
+                            r->fcgi.len_header = 0;
                         }
-                        cgi_poll_fd[*i].fd = r->fcgi.fd;
-                        cgi_poll_fd[*i].events = POLLIN;
+                        else
+                        {
+                            r->cgi->status.fcgi = FASTCGI_READ_PADDING;
+                        }
+
+                        r->cgi->dir = CGI_IN;
+                        r->timeout = conf->TimeoutCGI;
+                        r->sock_timer = 0;
                     }
-                    else if (r->cgi->dir == SOCK_OUT)
-                    {
-                        cgi_poll_fd[*i].fd = r->clientSocket;
-                        cgi_poll_fd[*i].events = POLLOUT;
-                    }
+                    cgi_poll_fd[*i].fd = r->fcgi.fd;
+                    cgi_poll_fd[*i].events = POLLIN;
                 }
-            }
-            else if (r->cgi->status.fcgi == FASTCGI_READ_ERROR)
-            {
-                cgi_poll_fd[*i].fd = r->fcgi.fd;
-                cgi_poll_fd[*i].events = POLLIN;
-            }
-            else if (r->cgi->status.fcgi == FASTCGI_READ_PADDING)
-            {
-                cgi_poll_fd[*i].fd = r->fcgi.fd;
-                cgi_poll_fd[*i].events = POLLIN;
-            }
-            else if (r->cgi->status.fcgi == FASTCGI_CLOSE)
-            {
-                if (r->mode_send == CHUNK_END)
+                else if (r->cgi->dir == SOCK_OUT)
                 {
                     cgi_poll_fd[*i].fd = r->clientSocket;
                     cgi_poll_fd[*i].events = POLLOUT;
                 }
-                else
-                {
-                    cgi_poll_fd[*i].fd = r->fcgi.fd;
-                    cgi_poll_fd[*i].events = POLLIN;
-                }
+            }
+        }
+        else if (r->cgi->status.fcgi == FASTCGI_READ_ERROR)
+        {
+            cgi_poll_fd[*i].fd = r->fcgi.fd;
+            cgi_poll_fd[*i].events = POLLIN;
+        }
+        else if (r->cgi->status.fcgi == FASTCGI_READ_PADDING)
+        {
+            cgi_poll_fd[*i].fd = r->fcgi.fd;
+            cgi_poll_fd[*i].events = POLLIN;
+        }
+        else if (r->cgi->status.fcgi == FASTCGI_CLOSE)
+        {
+            if (r->mode_send == CHUNK_END)
+            {
+                cgi_poll_fd[*i].fd = r->clientSocket;
+                cgi_poll_fd[*i].events = POLLOUT;
             }
             else
             {
-                print_err(r, "<%s:%d> ??? Error status=%d\n", __func__, __LINE__, r->cgi->status.fcgi);
-                if (r->cgi->status.fcgi <= FASTCGI_READ_HTTP_HEADERS)
-                    r->err = -RS502;
-                else
-                    r->err = -1;
-                cgi_del_from_list(r);
-                end_response(r);
-                return;
+                cgi_poll_fd[*i].fd = r->fcgi.fd;
+                cgi_poll_fd[*i].events = POLLIN;
             }
+        }
+        else
+        {
+            print_err(r, "<%s:%d> ??? Error status=%d\n", __func__, __LINE__, r->cgi->status.fcgi);
+            r->err = -1;
+            cgi_del_from_list(r);
+            end_response(r);
+            return;
         }
     }
     (*i)++;
 }
 //======================================================================
-void fcgi_(Connect* r)
+void fcgi_worker(Connect* r)
 {
     if (r->cgi->status.fcgi == FASTCGI_BEGIN)
     {
@@ -994,8 +969,9 @@ void fcgi_(Connect* r)
             if ((r->cgi->len_buf == 0) && (r->fcgi.dataLen == 0)) //end post data
             {
                 r->cgi->status.fcgi = FASTCGI_READ_HEADER;
-                r->fcgi.dataLen = 0;
-                r->fcgi.paddingLen = 0;
+                r->cgi->dir = CGI_IN;
+                r->fcgi.ptr_header = r->cgi->buf;
+                r->fcgi.len_header = 0;
 
                 r->fcgi.http_headers_received = false;
                 r->tail = NULL;
@@ -1025,6 +1001,11 @@ void fcgi_(Connect* r)
                             else
                                 r->cgi->status.fcgi = FASTCGI_READ_PADDING;
                         }
+                        else
+                        {
+                            r->timeout = conf->TimeoutCGI;
+                            r->cgi->status.fcgi = FASTCGI_READ_HTTP_HEADERS;
+                        }
                     }
                     break;
                     case FCGI_STDERR:
@@ -1040,6 +1021,15 @@ void fcgi_(Connect* r)
                         cgi_del_from_list(r);
                         end_response(r);
                 }
+            }
+            else if (ret < 0)
+            {
+                if (r->cgi->status.fcgi <= FASTCGI_READ_HTTP_HEADERS)
+                    r->err = -RS502;
+                else
+                    r->err = -1;
+                cgi_del_from_list(r);
+                end_response(r);
             }
         }
         else if (r->cgi->status.fcgi == FASTCGI_READ_HTTP_HEADERS)
@@ -1068,6 +1058,21 @@ void fcgi_(Connect* r)
                 r->err = -RS502;
                 cgi_del_from_list(r);
                 end_response(r);
+            }
+            else
+            {
+                r->timeout = conf->TimeoutCGI;
+                if (r->fcgi.dataLen == 0)
+                {
+                    if (r->fcgi.paddingLen == 0)
+                    {
+                        r->cgi->status.fcgi = FASTCGI_READ_HEADER;
+                        r->fcgi.ptr_header = r->cgi->buf;
+                        r->fcgi.len_header = 0;
+                    }
+                    else
+                        r->cgi->status.fcgi = FASTCGI_READ_PADDING;
+                }
             }
         }
         else if (r->cgi->status.fcgi == FASTCGI_SEND_HTTP_HEADERS)

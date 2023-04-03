@@ -210,7 +210,7 @@ void end_response(Connect *req)
         req->init();
         req->timeout = conf->TimeoutKeepAlive;
         ++req->numReq;
-        push_pollin_list(req);
+        push_get_request(req);
     }
 }
 //======================================================================
@@ -490,7 +490,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             }
 
             start_conn();
-            push_pollin_list(req);
+            push_get_request(req);
         }
 
         if (ret_poll)

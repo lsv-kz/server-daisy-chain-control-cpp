@@ -41,6 +41,7 @@
 #include <sys/un.h>
 
 #include "string__.h"
+#include "ranges.h"
 
 #define    LINUX_
 //#define    FREEBSD_
@@ -81,8 +82,9 @@ enum { HTTP09 = 1, HTTP10, HTTP11, HTTP2 };
 enum { EXIT_THR = 1 };
 
 enum MODE_SEND { NO_CHUNK, CHUNK, CHUNK_END };
-enum SOURCE_ENTITY { ENTITY_NONE, FROM_FILE, FROM_DATA_BUFFER, };
-enum OPERATION_TYPE { READ_REQUEST, SEND_RESP_HEADERS, SEND_ENTITY, };
+enum SOURCE_ENTITY { ENTITY_NONE, FROM_FILE, FROM_DATA_BUFFER, MULTIPART_ENTITY, };
+enum OPERATION_TYPE { READ_REQUEST, SEND_RESP_HEADERS, SEND_ENTITY, DYN_PAGE, };
+enum MULTIPART { SEND_HEADERS, SEND_PART, SEND_END };
 enum POLL_STATUS { WAIT, WORK };
 
 enum CGI_TYPE { CGI_TYPE_NONE, CGI, PHPCGI, PHPFPM, FASTCGI, SCGI, };
@@ -302,6 +304,14 @@ public:
         int len_header;
     } fcgi;
 
+    ArrayRanges rg;
+    struct
+    {
+        MULTIPART status;
+        Range *rg;
+        String hdr;
+    } mp;
+
     SOURCE_ENTITY source_entity;
     MODE_SEND mode_send;
 
@@ -404,8 +414,9 @@ void end_response(Connect *req);
 void close_connect(Connect *req);
 //----------------------------------------------------------------------
 void event_handler(RequestManager *ReqMan);
-void push_pollin_list(Connect *req);
-void push_pollout_list(Connect *req);
+void push_get_request(Connect *req);
+void push_send_file(Connect *req);
+void push_send_multipart(Connect *req);
 void push_send_html(Connect *req);
 void close_event_handler();
 //----------------------------------------------------------------------

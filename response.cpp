@@ -1,4 +1,4 @@
-#include "classes.h"
+#include "main.h"
 
 using namespace std;
 //======================================================================
@@ -116,9 +116,8 @@ void response1(RequestManager *ReqMan)
 }
 //======================================================================
 int send_file(Connect *req);
-int send_multypart(Connect *req, ArrayRanges& rg, char *rd_buf, int size);
-int create_multipart_head(Connect *req, Range *ranges, char *buf, int len_buf);
 const char boundary[] = "---------a9b5r7a4c0a2d5a1b8r3a";
+int send_multypart(Connect *req);
 //======================================================================
 long long file_size(const char *s)
 {
@@ -366,32 +365,23 @@ int send_file(Connect *req)
     {
         int err;
 
-        ArrayRanges rg(req->sRange, req->fileSize);
-        if ((err = rg.error()))
+        req->rg.init(req->sRange, req->fileSize);
+        if ((err = req->rg.error()))
         {
             print_err(req, "<%s:%d> Error create_ranges\n", __func__, __LINE__);
             return err;
         }
 
-        req->numPart = rg.size();
+        req->numPart = req->rg.size();
         req->respStatus = RS206;
         if (req->numPart > 1)
         {
-            int size = conf->SndBufSize;
-            char *rd_buf = new(nothrow) char [size];
-            if (!rd_buf)
-            {
-                print_err(req, "<%s:%d> Error malloc(): %s\n", __func__, __LINE__, strerror(errno));
-                return -1;
-            }
-
-            int n = send_multypart(req, rg, rd_buf, size);
-            delete [] rd_buf;
+            int n = send_multypart(req);
             return n;
         }
         else if (req->numPart == 1)
         {
-            Range *pr = rg.get(0);
+            Range *pr = req->rg.get();
             if (pr)
             {
                 req->offset = pr->start;
@@ -403,7 +393,6 @@ int send_file(Connect *req)
         else
         {
             print_err(req, "<%s:%d> ???\n", __func__, __LINE__);
-            exit(1);
             return -RS416;
         }
     }
@@ -417,25 +406,26 @@ int send_file(Connect *req)
     if (create_response_headers(req))
         return -1;
 
-    push_pollout_list(req);
+    push_send_file(req);
 
     return 1;
 }
 //======================================================================
-int send_multypart(Connect *req, ArrayRanges& rg, char *rd_buf, int size)
+int create_multipart_head(Connect *req);
+//======================================================================
+int send_multypart(Connect *req)
 {
-    int n;
     long long send_all_bytes = 0;
     char buf[1024];
-    Range *range;
 
-    for (int i = 0; (range = rg.get(i)) && (i < req->numPart); ++i)
+    for ( ; (req->mp.rg = req->rg.get()); )
     {
-        send_all_bytes += (range->len);
-        send_all_bytes += create_multipart_head(req, range, buf, sizeof(buf));
+        send_all_bytes += (req->mp.rg->len);
+        send_all_bytes += create_multipart_head(req);
     }
     send_all_bytes += snprintf(buf, sizeof(buf), "\r\n--%s--\r\n", boundary);
     req->respContentLength = send_all_bytes;
+    req->send_bytes = 0;
 
     req->hdrs.reserve(256);
     req->hdrs << "Content-Type: multipart/byteranges; boundary=" << boundary << "\r\n";
@@ -446,90 +436,29 @@ int send_multypart(Connect *req, ArrayRanges& rg, char *rd_buf, int size)
         return -1;
     }
 
+    req->rg.set_index();
+
     if (create_response_headers(req))
         return -1;
-    if (write_to_client(req, req->resp_headers.s.c_str(), req->resp_headers.s.size(), conf->Timeout) < 0)
-    {
-        print_err(req, "<%s:%d> Sent to client response error\n", __func__, __LINE__);
-        req->req_hd.iReferer = MAX_HEADERS - 1;
-        req->reqHdValue[req->req_hd.iReferer] = "Error send response headers";
-        return -1;
-    }
 
-    if (req->reqMethod == M_HEAD)
-        return 0;
+    push_send_multipart(req);
 
-    send_all_bytes = 0;
-
-    for (int i = 0; (range = rg.get(i)) && (i < req->numPart); ++i)
-    {
-        if ((n = create_multipart_head(req, range, buf, sizeof(buf))) == 0)
-        {
-            print_err(req, "<%s:%d> Error create_multipart_head()=%d\n", __func__, __LINE__, n);
-            return -1;
-        }
-
-        n = write_to_client(req, buf, strlen(buf), conf->Timeout);
-        if (n < 0)
-        {
-            print_err(req, "<%s:%d> Error: write_to_client(), %lld bytes\n", __func__, __LINE__, send_all_bytes);
-            return -1;
-        }
-
-        send_all_bytes += n;
-        send_all_bytes += range->len;
-
-        if (send_largefile(req, rd_buf, size, range->start, &range->len))
-        {
-            print_err(req, "<%s:%d> Error: send_file_ux()\n", __func__, __LINE__);
-            return -1;
-        }
-    }
-
-    req->send_bytes = send_all_bytes;
-    snprintf(buf, sizeof(buf), "\r\n--%s--\r\n", boundary);
-    n = write_to_client(req, buf, strlen(buf), conf->Timeout);
-    if (n < 0)
-    {
-        print_err(req, "<%s:%d> Error: write_to_client() %lld bytes\n", __func__, __LINE__, send_all_bytes);
-        return -1;
-    }
-    req->send_bytes += n;
-    return 0;
+    return 1;
 }
 //======================================================================
-int create_multipart_head(Connect *req, struct Range *ranges, char *buf, int len_buf)
+int create_multipart_head(Connect *req)
 {
-    int n, all = 0;
+    req->mp.hdr = "";
+    req->mp.hdr << "\r\n--" << boundary << "\r\n";
 
-    n = snprintf(buf, len_buf, "\r\n--%s\r\n", boundary);
-    buf += n;
-    len_buf -= n;
-    all += n;
-
-    if (req->respContentType && (len_buf > 0))
-    {
-        n = snprintf(buf, len_buf, "Content-Type: %s\r\n", req->respContentType);
-        buf += n;
-        len_buf -= n;
-        all += n;
-    }
+    if (req->respContentType)
+        req->mp.hdr << "Content-Type: " << req->respContentType << "\r\n";
     else
         return 0;
 
-    if (len_buf > 0)
-    {
-        n = snprintf(buf, len_buf,
-            "Content-Range: bytes %lld-%lld/%lld\r\n\r\n",
-            ranges->start, ranges->end, req->fileSize);
-        buf += n;
-        len_buf -= n;
-        all += n;
-    }
-    else
-        return 0;
+    req->mp.hdr << "Content-Range: bytes " << req->mp.rg->start << "-" << req->mp.rg->end << "/" << req->fileSize << "\r\n\r\n";
 
-    return all;
+    return req->mp.hdr.size();
 }
 //======================================================================
 int options(Connect *r)

@@ -1,5 +1,6 @@
-#include "classes.h"
+#include "main.h"
 
+using namespace std;
 //======================================================================
 void Connect::init()
 {
@@ -214,8 +215,12 @@ void ArrayRanges::parse_ranges(char *sRange)
     }
 }
 //----------------------------------------------------------------------
-ArrayRanges::ArrayRanges(char *s, long long sz)
+void ArrayRanges::init(char *s, long long sz)
 {
+    err = 0;
+    SizeArray = nRanges = i = 0;
+    range = NULL;
+
     if (!s)
     {
         err = RS500;

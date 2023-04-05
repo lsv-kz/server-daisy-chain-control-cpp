@@ -189,7 +189,12 @@ void ArrayRanges::parse_ranges(char *sRange)
                 return;
             }
 
-            if (end >= size)
+            if (start < 0)
+            {
+                start = 0;
+                end = size - 1;
+            }
+            else if (end >= size)
                 end = size - 1;
 
             if (start <= end)
@@ -248,6 +253,6 @@ void ArrayRanges::init(char *s, long long sz)
     parse_ranges(s);
     if ((nRanges == 0) && (err == 0))
         err = RS416;
-    //else if (nRanges > 1)
-    //    check_ranges();
+    else if (nRanges > 1)
+        check_ranges();
 }

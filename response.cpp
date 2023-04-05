@@ -200,7 +200,6 @@ int response2(Connect *req)
             return 1;
         }
 
-        req->scriptName = NULL;
         return -1;
     }
 
@@ -284,10 +283,8 @@ int response2(Connect *req)
                 path += "/index.php";
                 if (!stat(path.c_str(), &st))
                 {
-                    string s = req->decodeUri;
-                    s += "index.php";
-                    req->scriptName = s.c_str();
-
+                    req->scriptName = "";
+                    req->scriptName << req->decodeUri << "index.php";
                     if (conf->UsePHP == "php-fpm")
                     {
                         req->cgi_type = PHPFPM;
@@ -301,7 +298,6 @@ int response2(Connect *req)
                         return 1;
                     }
 
-                    req->scriptName = NULL;
                     return -1;
                 }
                 path.resize(len);

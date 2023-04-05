@@ -171,6 +171,134 @@ const char *get_str_http_prot(int i)
     return "";
 }
 //======================================================================
+const char *get_str_operation(int n)
+{
+    switch (n)
+    {
+        case READ_REQUEST:
+            return "READ_REQUEST";
+        case SEND_RESP_HEADERS:
+            return "SEND_RESP_HEADERS";
+        case SEND_ENTITY:
+            return "SEND_ENTITY";
+        case DYN_PAGE:
+            return "DYN_PAGE";
+    }
+
+    return "?";
+}
+//======================================================================
+const char *get_cgi_status(int n)
+{
+    switch (n)
+    {
+        case SCGI_CONNECT:
+            return "SCGI_CONNECT";
+        case SCGI_PARAMS:
+            return "SCGI_PARAMS";
+        case SCGI_STDIN:
+            return "SCGI_STDIN";
+        case SCGI_READ_HTTP_HEADERS:
+            return "SCGI_READ_HTTP_HEADERS";
+        case SCGI_SEND_HTTP_HEADERS:
+            return "SCGI_SEND_HTTP_HEADERS";
+        case SCGI_SEND_ENTITY:
+            return "SCGI_SEND_ENTITY";
+    }
+
+    return "?";
+}
+//======================================================================
+const char *get_fcgi_status(int n)
+{
+    switch (n)
+    {
+        case FASTCGI_CONNECT:
+            return "FASTCGI_CONNECT";
+        case FASTCGI_BEGIN:
+            return "FASTCGI_BEGIN";
+        case FASTCGI_PARAMS:
+            return "FASTCGI_PARAMS";
+        case FASTCGI_STDIN:
+            return "FASTCGI_STDIN";
+        case FASTCGI_READ_HEADER:
+            return "FASTCGI_READ_HEADER";
+        case FASTCGI_READ_HTTP_HEADERS:
+            return "FASTCGI_READ_HTTP_HEADERS";
+        case FASTCGI_SEND_HTTP_HEADERS:
+            return "FASTCGI_SEND_HTTP_HEADERS";
+        case FASTCGI_SEND_ENTITY:
+            return "FASTCGI_SEND_ENTITY";
+        case FASTCGI_READ_ERROR:
+            return "FASTCGI_READ_ERROR";
+        case FASTCGI_READ_PADDING:
+            return "FASTCGI_READ_PADDING";
+        case FASTCGI_CLOSE:
+            return "FASTCGI_CLOSE";
+    }
+
+    return "?";
+}
+//======================================================================
+const char *get_scgi_status(int n)
+{
+    switch (n)
+    {
+        case SCGI_CONNECT:
+            return "SCGI_CONNECT";
+        case SCGI_PARAMS:
+            return "SCGI_PARAMS";
+        case SCGI_STDIN:
+            return "SCGI_STDIN";
+        case SCGI_READ_HTTP_HEADERS:
+            return "SCGI_READ_HTTP_HEADERS";
+        case SCGI_SEND_HTTP_HEADERS:
+            return "SCGI_SEND_HTTP_HEADERS";
+        case SCGI_SEND_ENTITY:
+            return "SCGI_SEND_ENTITY";
+    }
+
+    return "?";
+}
+//======================================================================
+const char *get_cgi_type(int n)
+{
+    switch (n)
+    {
+        case CGI_TYPE_NONE:
+            return "CGI_TYPE_NONE";
+        case CGI:
+            return "CGI";
+        case PHPCGI:
+            return "PHPCGI";
+        case PHPFPM:
+            return "PHPFPM";
+        case FASTCGI:
+            return "FASTCGI";
+        case SCGI:
+            return "SCGI";
+    }
+
+    return "?";
+}
+//======================================================================
+const char *get_cgi_dir(int n)
+{
+    switch (n)
+    {
+        case FROM_CGI:
+            return "FROM_CGI";
+        case TO_CGI:
+            return "TO_CGI";
+        case FROM_CLIENT:
+            return "FROM_CLIENT";
+        case TO_CLIENT:
+            return "TO_CLIENT";
+    }
+
+    return "?";
+}
+//======================================================================
 const char *istextfile_(FILE *f)
 {
     int cnt, i;

@@ -22,6 +22,9 @@ static void cgi_worker(Connect* r);
 void cgi_set_status_readheaders(Connect *r);
 int timeout_cgi(Connect *r);
 int cgi_create_pipes(Connect *req);
+const char *get_cgi_status(int n);
+const char *get_cgi_type(int n);
+const char *get_cgi_dir(int n);
 
 void fcgi_set_poll_list(Connect *r, int *i);
 void fcgi_worker(Connect* r);
@@ -94,7 +97,7 @@ void cgi_del_from_list(Connect *r)
         delete r->cgi;
     }
 
-    r->scriptName = NULL;
+    r->scriptName = "";
 
     if (r->prev && r->next)
     {
@@ -247,7 +250,7 @@ static int set_poll_list()
                     scgi_set_poll_list(r, &i);
                     break;
                 default:
-                    print_err(r, "<%s:%d> ??? cgi.scriptType=%d\n", __func__, __LINE__, r->cgi_type);
+                    print_err(r, "<%s:%d> ??? Error: CGI_TYPE=%s\n", __func__, __LINE__, get_cgi_type(r->cgi_type));
                     r->err = -RS500;
                     cgi_del_from_list(r);
                     end_response(r);
@@ -294,8 +297,8 @@ static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
 
             if (cgi_poll_fd[i].fd == r->clientSocket)
             {
-                print_err(r, "<%s:%d> Error: fd=%d, events=0x%x(0x%x), op=%d, send_bytes=%lld\n", 
-                        __func__, __LINE__, r->clientSocket, cgi_poll_fd[i].events, cgi_poll_fd[i].revents, r->operation, r->send_bytes);
+                print_err(r, "<%s:%d> Error: fd=%d, events=0x%x(0x%x), send_bytes=%lld\n", 
+                        __func__, __LINE__, r->clientSocket, cgi_poll_fd[i].events, cgi_poll_fd[i].revents, r->send_bytes);
                 r->req_hd.iReferer = MAX_HEADERS - 1;
                 r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
                 r->err = -1;
@@ -309,14 +312,13 @@ static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
                 {
                     case CGI:
                     case PHPCGI:
-                    case SCGI:
-                        if ((r->cgi->status.cgi == CGI_SEND_ENTITY) && (r->cgi->dir == CGI_IN))
+                        if ((r->cgi->status.cgi == CGI_SEND_ENTITY) && (r->cgi->dir == FROM_CGI))
                         {
                             if (r->mode_send == CHUNK)
                             {
                                 r->cgi->len_buf = 0;
                                 cgi_set_size_chunk(r);
-                                r->cgi->dir = SOCK_OUT;
+                                r->cgi->dir = TO_CLIENT;
                                 r->mode_send = CHUNK_END;
                             }
                             else
@@ -327,28 +329,31 @@ static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
                         }
                         else
                         {
-                            print_err(r, "<%s:%d> Error: fd=%d, events=0x%x(0x%x), operation=%d, send_bytes=%lld\n", 
-                                    __func__, __LINE__, r->cgi->from_script, cgi_poll_fd[i].events, cgi_poll_fd[i].revents, r->operation, 
-                                    r->send_bytes);
-                            if ((r->cgi->status.cgi <= CGI_READ_HTTP_HEADERS) && 
-                            ((r->cgi->dir == CGI_IN) || (r->cgi->dir == CGI_OUT)))
+                            print_err(r, "<%s:%d> Error: events=0x%x(0x%x)\n", 
+                                    __func__, __LINE__, cgi_poll_fd[i].events, cgi_poll_fd[i].revents);
+                            if (cgi_poll_fd[i].fd == r->clientSocket)
                             {
                                 r->req_hd.iReferer = MAX_HEADERS - 1;
                                 r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-                                r->err = -RS502;
+                                r->err = -1;
                             }
                             else
-                                r->err = -1;
+                            {
+                                if (r->cgi->status.cgi <= CGI_READ_HTTP_HEADERS)
+                                    r->err = -RS502;
+                                else
+                                    r->err = -1;
+                            }
                             cgi_del_from_list(r);
                             end_response(r);
                         }
                         break;
                     case PHPFPM:
                     case FASTCGI:
+                        print_err(r, "<%s:%d> Error: events=0x%x(0x%x)\n", 
+                                    __func__, __LINE__, cgi_poll_fd[i].events, cgi_poll_fd[i].revents);
                         if (cgi_poll_fd[i].fd == r->clientSocket)
                         {
-                            print_err(r, "<%s:%d> Error: events=0x%x(0x%x), operation=%d\n", 
-                                    __func__, __LINE__, cgi_poll_fd[i].events, cgi_poll_fd[i].revents, r->operation);
                             r->req_hd.iReferer = MAX_HEADERS - 1;
                             r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
                             r->err = -1;
@@ -363,8 +368,45 @@ static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
                         cgi_del_from_list(r);
                         end_response(r);
                         break;
+                    case SCGI:
+                        if ((r->cgi->status.scgi == SCGI_SEND_ENTITY) && (r->cgi->dir == FROM_CGI))
+                        {
+                            if (r->mode_send == CHUNK)
+                            {
+                                r->cgi->len_buf = 0;
+                                cgi_set_size_chunk(r);
+                                r->cgi->dir = TO_CLIENT;
+                                r->mode_send = CHUNK_END;
+                            }
+                            else
+                            {
+                                cgi_del_from_list(r);
+                                end_response(r);
+                            }
+                        }
+                        else
+                        {
+                            print_err(r, "<%s:%d> Error: events=0x%x(0x%x)\n", 
+                                    __func__, __LINE__, cgi_poll_fd[i].events, cgi_poll_fd[i].revents);
+                            if (cgi_poll_fd[i].fd == r->clientSocket)
+                            {
+                                r->req_hd.iReferer = MAX_HEADERS - 1;
+                                r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+                                r->err = -1;
+                            }
+                            else
+                            {
+                                if (r->cgi->status.scgi <= SCGI_READ_HTTP_HEADERS)
+                                    r->err = -RS502;
+                                else
+                                    r->err = -1;
+                            }
+                            cgi_del_from_list(r);
+                            end_response(r);
+                        }
+                        break;
                     default:
-                        print_err(r, "<%s:%d> ??? cgi.scriptType=%d\n", __func__, __LINE__, r->cgi_type);
+                        print_err(r, "<%s:%d> ??? Error: CGI_TYPE=%s\n", __func__, __LINE__, get_cgi_type(r->cgi_type));
                         r->err = -1;
                         cgi_del_from_list(r);
                         end_response(r);
@@ -489,13 +531,13 @@ static int cgi_fork(Connect *r, int* serv_cgi, int* cgi_serv)
     switch (r->cgi_type)
     {
         case CGI:
-            path << conf->ScriptPath << get_script_name(r->scriptName);
+            path << conf->ScriptPath << get_script_name(r->scriptName.c_str());
             break;
         case PHPCGI:
-            path << conf->DocumentRoot << r->scriptName;
+            path << conf->DocumentRoot << r->scriptName.c_str();
             break;
         default:
-            print_err(r, "<%s:%d> ScriptType \?(404)\n", __func__, __LINE__);
+            print_err(r, "<%s:%d> ??? Error: CGI_TYPE=%s\n", __func__, __LINE__, get_cgi_type(r->cgi_type));
             r->connKeepAlive = 0;
             return -RS500;
     }
@@ -561,7 +603,7 @@ static int cgi_fork(Connect *r, int* serv_cgi, int* cgi_serv)
         if (r->req_hd.iUserAgent >= 0)
             setenv("HTTP_USER_AGENT", r->reqHdValue[r->req_hd.iUserAgent], 1);
 
-        setenv("SCRIPT_NAME", r->scriptName, 1);
+        setenv("SCRIPT_NAME", r->scriptName.c_str(), 1);
         setenv("SCRIPT_FILENAME", path.c_str(), 1);
         
         if (r->reqMethod == M_POST)
@@ -577,7 +619,7 @@ static int cgi_fork(Connect *r, int* serv_cgi, int* cgi_serv)
         int err_ = 0;
         if (r->cgi_type == CGI)
         {
-            execl(path.c_str(), base_name(r->scriptName), NULL);
+            execl(path.c_str(), base_name(r->scriptName.c_str()), NULL);
             err_ = errno;
         }
         else if (r->cgi_type == PHPCGI)
@@ -615,19 +657,19 @@ static int cgi_fork(Connect *r, int* serv_cgi, int* cgi_serv)
         {
             if (r->req_hd.reqContentLength > 0)
             {
+                r->sock_timer = 0;
                 r->cgi->len_post = r->req_hd.reqContentLength - r->lenTail;
                 r->cgi->status.cgi = CGI_STDIN;
-                r->sock_timer = 0;
                 if (r->lenTail > 0)
                 {
-                    r->cgi->dir = CGI_OUT;
+                    r->cgi->dir = TO_CGI;
                     r->timeout = conf->TimeoutCGI;
                     r->cgi->p = r->tail;
                     r->cgi->len_buf = r->lenTail;
                 }
                 else // [r->lenTail == 0]
                 {
-                    r->cgi->dir = SOCK_IN;
+                    r->cgi->dir = FROM_CLIENT;
                     r->timeout = conf->Timeout;
                 }
             }
@@ -740,10 +782,10 @@ int cgi_stdin(Connect *req)
                 cgi_set_status_readheaders(req);
             }
             else
-                req->cgi->dir = SOCK_IN;
+                req->cgi->dir = FROM_CLIENT;
         }
     }
-    else if (req->cgi->dir == SOCK_IN)
+    else if (req->cgi->dir == FROM_CLIENT)
     {
         int rd = (req->cgi->len_post > req->cgi->size_buf) ? req->cgi->size_buf : req->cgi->len_post;
         req->cgi->len_buf = read(req->clientSocket, req->cgi->buf, rd);
@@ -759,10 +801,10 @@ int cgi_stdin(Connect *req)
         }
         
         req->cgi->len_post -= req->cgi->len_buf;
-        req->cgi->dir = CGI_OUT;
+        req->cgi->dir = TO_CGI;
         req->cgi->p = req->cgi->buf;
     }
-    else if (req->cgi->dir == CGI_OUT)
+    else if (req->cgi->dir == TO_CGI)
     {
         int fd;
         if ((req->cgi_type == CGI) || (req->cgi_type == PHPCGI))
@@ -783,12 +825,15 @@ int cgi_stdin(Connect *req)
         {
             if (req->cgi->len_post == 0)
             {
-                close(req->cgi->to_script);
-                req->cgi->to_script = -1;
+                if ((req->cgi_type == CGI) || (req->cgi_type == PHPCGI))
+                {
+                    close(req->cgi->to_script);
+                    req->cgi->to_script = -1;
+                }
                 cgi_set_status_readheaders(req);
             }
             else
-                req->cgi->dir = SOCK_IN;
+                req->cgi->dir = FROM_CLIENT;
         }
     }
     
@@ -797,7 +842,7 @@ int cgi_stdin(Connect *req)
 //======================================================================
 int cgi_stdout(Connect *req)
 {
-    if (req->cgi->dir == CGI_IN)
+    if (req->cgi->dir == FROM_CGI)
     {
         int fd;
         if ((req->cgi_type == CGI) || (req->cgi_type == PHPCGI))
@@ -807,7 +852,7 @@ int cgi_stdout(Connect *req)
         req->cgi->len_buf = read(fd, req->cgi->buf + 8, req->cgi->size_buf);
         if (req->cgi->len_buf == -1)
         {
-            print_err(req, "<%s:%d> Error read from script(fd=%d): %s(%d)\n", __func__, __LINE__, req->cgi->from_script, strerror(errno), errno);
+            print_err(req, "<%s:%d> Error read from script(): %s\n", __func__, __LINE__, strerror(errno));
             if (errno == EAGAIN)
                 return -EAGAIN;
             return -1;
@@ -818,14 +863,14 @@ int cgi_stdout(Connect *req)
             {
                 req->cgi->len_buf = 0;
                 cgi_set_size_chunk(req);
-                req->cgi->dir = SOCK_OUT;
+                req->cgi->dir = TO_CLIENT;
                 req->mode_send = CHUNK_END;
                 return 4;
             }
             return 0;
         }
 
-        req->cgi->dir = SOCK_OUT;
+        req->cgi->dir = TO_CLIENT;
         if (req->mode_send == CHUNK)
         {
             if (cgi_set_size_chunk(req))
@@ -835,7 +880,7 @@ int cgi_stdout(Connect *req)
             req->cgi->p = req->cgi->buf + 8;
         return req->cgi->len_buf;
     }
-    else if (req->cgi->dir == SOCK_OUT)
+    else if (req->cgi->dir == TO_CLIENT)
     {
         int ret = write(req->clientSocket, req->cgi->p, req->cgi->len_buf);
         if (ret == -1)
@@ -851,10 +896,7 @@ int cgi_stdout(Connect *req)
         req->send_bytes += ret;
         if (req->cgi->len_buf == 0)
         {
-            if (req->mode_send == CHUNK_END)
-                return 0;
-            else
-                req->cgi->dir = CGI_IN;
+            req->cgi->dir = FROM_CGI;
         }
         return ret;
     }
@@ -1008,12 +1050,12 @@ static void cgi_set_poll_list(Connect *r, int *i)
 {
     if (r->cgi->status.cgi == CGI_STDIN)
     {
-        if (r->cgi->dir == SOCK_IN)
+        if (r->cgi->dir == FROM_CLIENT)
         {
             cgi_poll_fd[*i].fd = r->clientSocket;
             cgi_poll_fd[*i].events = POLLIN;
         }
-        else if (r->cgi->dir == CGI_OUT)
+        else if (r->cgi->dir == TO_CGI)
         {
             cgi_poll_fd[*i].fd = r->cgi->to_script;
             cgi_poll_fd[*i].events = POLLOUT;
@@ -1031,12 +1073,12 @@ static void cgi_set_poll_list(Connect *r, int *i)
     }
     else if (r->cgi->status.cgi == CGI_SEND_ENTITY)
     {
-        if (r->cgi->dir == CGI_IN)
+        if (r->cgi->dir == FROM_CGI)
         {
             cgi_poll_fd[*i].fd = r->cgi->from_script;
             cgi_poll_fd[*i].events = POLLIN;
         }
-        else if (r->cgi->dir == SOCK_OUT)
+        else if (r->cgi->dir == TO_CLIENT)
         {
             cgi_poll_fd[*i].fd = r->clientSocket;
             cgi_poll_fd[*i].events = POLLOUT;
@@ -1044,7 +1086,7 @@ static void cgi_set_poll_list(Connect *r, int *i)
     }
     else
     {
-        print_err(r, "<%s:%d> ??? Error status=%d\n", __func__, __LINE__, r->cgi->status.cgi);
+        print_err(r, "<%s:%d> ??? Error: CGI_STATUS=%s\n", __func__, __LINE__, get_cgi_status(r->cgi->status.cgi));
         r->err = -1;
         cgi_del_from_list(r);
         end_response(r);
@@ -1140,12 +1182,12 @@ static void cgi_worker(Connect* r)
                         r->sock_timer = 0;
                         if (r->lenTail > 0)
                         {
-                            memmove(r->cgi->buf + 8, r->tail, r->lenTail);
-                            r->cgi->len_buf = r->lenTail;
-                            r->tail = NULL;
-                            r->lenTail = 0;
                             if (r->mode_send == CHUNK)
                             {
+                                memmove(r->cgi->buf + 8, r->tail, r->lenTail);
+                                r->cgi->len_buf = r->lenTail;
+                                r->tail = NULL;
+                                r->lenTail = 0;
                                 if (cgi_set_size_chunk(r))
                                 {
                                     r->err = -1;
@@ -1155,15 +1197,19 @@ static void cgi_worker(Connect* r)
                                 }
                             }
                             else
-                                r->cgi->p = r->cgi->buf + 8;
-                            r->cgi->dir = SOCK_OUT;
+                            {
+                                r->cgi->p = r->tail;
+                                r->cgi->len_buf = r->lenTail;
+                                r->lenTail = 0;
+                            }
+                            r->cgi->dir = TO_CLIENT;
                             r->timeout = conf->Timeout;
                         }
                         else
                         {
                             r->cgi->len_buf = 0;
                             r->cgi->p = NULL;
-                            r->cgi->dir = CGI_IN;
+                            r->cgi->dir = FROM_CGI;
                             r->timeout = conf->TimeoutCGI;
                         }
                     }
@@ -1203,7 +1249,7 @@ static void cgi_worker(Connect* r)
     }
     else
     {
-        print_err(r, "<%s:%d> ??? Error status=%d\n", __func__, __LINE__, r->cgi->status.cgi);
+        print_err(r, "<%s:%d> ??? Error: CGI_STATUS=%s\n", __func__, __LINE__, get_cgi_status(r->cgi->status.cgi));
         r->err = -1;
         cgi_del_from_list(r);
         end_response(r);
@@ -1223,7 +1269,7 @@ void cgi_set_status_readheaders(Connect *r)
 //======================================================================
 int timeout_cgi(Connect *r)
 {
-    if ((r->cgi->status.cgi == CGI_STDIN) && (r->cgi->dir == CGI_OUT))
+    if ((r->cgi->status.cgi == CGI_STDIN) && (r->cgi->dir == TO_CGI))
         return -RS504;
     else if (r->cgi->status.cgi == CGI_READ_HTTP_HEADERS)
         return -RS504;

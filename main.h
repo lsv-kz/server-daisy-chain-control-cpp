@@ -88,7 +88,7 @@ enum MULTIPART { SEND_HEADERS, SEND_PART, SEND_END };
 enum POLL_STATUS { WAIT, WORK };
 
 enum CGI_TYPE { CGI_TYPE_NONE, CGI, PHPCGI, PHPFPM, FASTCGI, SCGI, };
-enum DIRECT { CGI_IN, CGI_OUT, SOCK_IN, SOCK_OUT };
+enum DIRECT { FROM_CGI, TO_CGI, FROM_CLIENT, TO_CLIENT };
 
 enum CGI_STATUS  { CGI_CREATE_PROC, CGI_PARAMS, CGI_STDIN, CGI_READ_HTTP_HEADERS, CGI_SEND_HTTP_HEADERS, CGI_SEND_ENTITY };
 enum FCGI_STATUS { FASTCGI_CONNECT, FASTCGI_BEGIN, FASTCGI_PARAMS, FASTCGI_STDIN,
@@ -284,7 +284,7 @@ public:
         int len;
     } html;
 
-    const char *scriptName;
+    String scriptName;
     CGI_TYPE cgi_type;
     Cgi *cgi;
 
@@ -394,6 +394,8 @@ const char *get_str_method(int i);
 
 int get_int_http_prot(const char *s);
 const char *get_str_http_prot(int i);
+
+const char *get_str_operation(int i);
 
 int clean_path(char *path);
 const char *content_type(const char *s);

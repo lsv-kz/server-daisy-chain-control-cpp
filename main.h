@@ -62,8 +62,8 @@ typedef struct fcgi_list_addr {
 
 struct Param
 {
-    String name;
-    String val;
+    std::string name;
+    std::string val;
 };
 
 enum {

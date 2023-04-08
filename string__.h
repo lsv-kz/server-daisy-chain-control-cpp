@@ -53,6 +53,11 @@ class String
         buf += arg;
     }
     //------------------------------------------------------------------
+    void append(String& arg)
+    {
+        buf += arg.buf;
+    }
+    //------------------------------------------------------------------
     template <typename T>
     void append(T t)
     {
@@ -133,7 +138,10 @@ class String
 public:
     String(){}
     explicit String(unsigned int n) { buf.reserve(n); }
-    //String(const String&) = delete;
+    String(const String& s)
+    {
+        buf = s.buf;
+    }
 
     String(const std::string& s) { buf = s; }
 
@@ -166,6 +174,13 @@ public:
     {
         buf.clear();
         buf += s;
+        return *this;
+    }
+    //------------------------------------------------------------------
+    String& operator = (const String& s)
+    {
+        buf.clear();
+        buf += s.buf;
         return *this;
     }
     //------------------------------------------------------------------

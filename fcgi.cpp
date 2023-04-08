@@ -143,11 +143,6 @@ int fcgi_create_connect(Connect *req)
         return req->fcgi.fd;
     }
 
-    return 0;
-}
-//======================================================================
-void fcgi_create_param(Connect *req)
-{
     int i = 0;
     Param param;
     req->fcgi.vPar.clear();
@@ -200,20 +195,10 @@ void fcgi_create_param(Connect *req)
     req->fcgi.vPar.push_back(param);
     ++i;
 
-    if (req->reqMethod == M_HEAD)
-    {
-        param.name = "REQUEST_METHOD";
-        param.val = get_str_method(M_GET);
-        req->fcgi.vPar.push_back(param);
-        ++i;
-    }
-    else
-    {
-        param.name = "REQUEST_METHOD";
-        param.val = get_str_method(req->reqMethod);
-        req->fcgi.vPar.push_back(param);
-        ++i;
-    }
+    param.name = "REQUEST_METHOD";
+    param.val = get_str_method(req->reqMethod);
+    req->fcgi.vPar.push_back(param);
+    ++i;
 
     param.name = "SERVER_PROTOCOL";
     param.val = get_str_http_prot(req->httpProt);
@@ -264,10 +249,8 @@ void fcgi_create_param(Connect *req)
 
     if (req->cgi_type == PHPFPM)
     {
-        String s;
-        s << conf->DocumentRoot << req->scriptName.c_str();
         param.name = "SCRIPT_FILENAME";
-        param.val = s;
+        param.val = conf->DocumentRoot + req->scriptName.c_str();
         req->fcgi.vPar.push_back(param);
         ++i;
     }
@@ -306,13 +289,6 @@ void fcgi_create_param(Connect *req)
 
     req->fcgi.size_par = i;
     req->fcgi.i_param = 0;
-/*
-    for (i = 0; i < req->fcgi.size_par; ++i)
-    {
-        fprintf(stderr, "%s=%s\n", req->fcgi.vPar[i].name.c_str(), req->fcgi.vPar[i].val.c_str());
-    }
-*/
-    //fprintf(stderr, "size_par=%d\n", req->fcgi.size_par);
     //----------------------------------------------
     req->fcgi.dataLen = req->cgi->len_buf = 8;
     fcgi_set_header(req, FCGI_BEGIN_REQUEST);
@@ -329,6 +305,8 @@ void fcgi_create_param(Connect *req)
     req->cgi->status.fcgi = FASTCGI_BEGIN;
     req->timeout = conf->TimeoutCGI;
     req->sock_timer = 0;
+
+    return 0;
 }
 //======================================================================
 int fcgi_stdin(Connect *r)
@@ -498,7 +476,9 @@ void fcgi_stdout(Connect *r)
             if (r->fcgi.paddingLen == 0)
             {
                 r->timeout = conf->TimeoutCGI;
+                r->sock_timer = 0;
                 r->cgi->status.fcgi = FASTCGI_READ_HEADER;
+                r->cgi->dir = FROM_CGI;
                 r->fcgi.ptr_header = r->cgi->buf;
                 r->fcgi.len_header = 0;
             }
@@ -533,7 +513,10 @@ void fcgi_stdout(Connect *r)
             {
                 if (r->fcgi.paddingLen == 0)
                 {
+                    r->timeout = conf->TimeoutCGI;
+                    r->sock_timer = 0;
                     r->cgi->status.fcgi = FASTCGI_READ_HEADER;
+                    r->cgi->dir = FROM_CGI;
                     r->fcgi.ptr_header = r->cgi->buf;
                     r->fcgi.len_header = 0;
                 }

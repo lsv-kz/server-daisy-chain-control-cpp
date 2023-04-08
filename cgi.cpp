@@ -30,7 +30,6 @@ void fcgi_set_poll_list(Connect *r, int *i);
 void fcgi_worker(Connect* r);
 int timeout_fcgi(Connect *r);
 int fcgi_create_connect(Connect *req);
-void fcgi_create_param(Connect *req);
 
 void scgi_set_poll_list(Connect *r, int *i);
 void scgi_worker(Connect* r);
@@ -165,8 +164,6 @@ mtx_.lock();
                     end_response(r);
                     continue;
                 }
-
-                fcgi_create_param(r);
             }
             else if (r->cgi_type == SCGI)
             {
@@ -177,7 +174,6 @@ mtx_.lock();
                     end_response(r);
                     continue;
                 }
-                
             }
             else
             {
@@ -320,6 +316,8 @@ static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
                                 cgi_set_size_chunk(r);
                                 r->cgi->dir = TO_CLIENT;
                                 r->mode_send = CHUNK_END;
+                                r->timeout = conf->Timeout;
+                                r->sock_timer = 0;
                             }
                             else
                             {
@@ -377,6 +375,8 @@ static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
                                 cgi_set_size_chunk(r);
                                 r->cgi->dir = TO_CLIENT;
                                 r->mode_send = CHUNK_END;
+                                r->timeout = conf->Timeout;
+                                r->sock_timer = 0;
                             }
                             else
                             {
@@ -666,6 +666,8 @@ static int cgi_fork(Connect *r, int* serv_cgi, int* cgi_serv)
                     r->timeout = conf->TimeoutCGI;
                     r->cgi->p = r->tail;
                     r->cgi->len_buf = r->lenTail;
+                    r->tail = NULL;
+                    r->lenTail = 0;
                 }
                 else // [r->lenTail == 0]
                 {
@@ -751,41 +753,7 @@ int cgi_create_pipes(Connect *req)
 //======================================================================
 int cgi_stdin(Connect *req)
 {
-    if (req->tail)
-    {
-        int fd;
-        if ((req->cgi_type == CGI) || (req->cgi_type == PHPCGI))
-            fd = req->cgi->to_script;
-        else
-            fd = req->fcgi.fd;
-        int ret = write(fd, req->tail, req->lenTail);
-        if (ret == -1)
-        {
-            print_err(req, "<%s:%d> Error write to script: %s\n", __func__, __LINE__, strerror(errno));
-            return -1;
-        }
-        else if (ret != req->lenTail)
-        {
-            print_err(req, "<%s:%d>  write() != len\n", __func__, __LINE__);
-        }
-
-        req->tail += ret;
-        req->lenTail -= ret;
-        
-        if (req->lenTail == 0)
-        {
-            req->tail = NULL;
-            if (req->cgi->len_post == 0)
-            {
-                close(req->cgi->to_script);
-                req->cgi->to_script = -1;
-                cgi_set_status_readheaders(req);
-            }
-            else
-                req->cgi->dir = FROM_CLIENT;
-        }
-    }
-    else if (req->cgi->dir == FROM_CLIENT)
+    if (req->cgi->dir == FROM_CLIENT)
     {
         int rd = (req->cgi->len_post > req->cgi->size_buf) ? req->cgi->size_buf : req->cgi->len_post;
         req->cgi->len_buf = read(req->clientSocket, req->cgi->buf, rd);
@@ -799,7 +767,7 @@ int cgi_stdin(Connect *req)
             print_err(req, "<%s:%d> Error read()=0\n", __func__, __LINE__);
             return -1;
         }
-        
+
         req->cgi->len_post -= req->cgi->len_buf;
         req->cgi->dir = TO_CGI;
         req->cgi->p = req->cgi->buf;

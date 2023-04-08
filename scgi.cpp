@@ -267,12 +267,12 @@ void scgi_set_poll_list(Connect *r, int *i)
     }
     else if (r->cgi->status.scgi == SCGI_STDIN)
     {
-        if (r->cgi->dir == FROM_CGI)
+        if (r->cgi->dir == FROM_CLIENT)
         {
             cgi_poll_fd[*i].fd = r->clientSocket;
             cgi_poll_fd[*i].events = POLLIN;
         }
-        else if (r->cgi->dir == TO_CLIENT)
+        else if (r->cgi->dir == TO_CGI)
         {
             cgi_poll_fd[*i].fd = r->fcgi.fd;
             cgi_poll_fd[*i].events = POLLOUT;

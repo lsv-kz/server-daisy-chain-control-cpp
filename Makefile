@@ -47,7 +47,7 @@ $(OBJSDIR)/send_headers.o: send_headers.cpp main.h string__.h
 $(OBJSDIR)/config.o: config.cpp main.h string__.h
 	$(CC) $(CFLAGS) -c config.cpp -o $@
 
-$(OBJSDIR)/threads_manager.o: threads_manager.cpp main.h string__.h
+$(OBJSDIR)/threads_manager.o: threads_manager.cpp main.h string__.h ranges.h
 	$(CC) $(CFLAGS) -c threads_manager.cpp -o $@
 
 $(OBJSDIR)/response.o: response.cpp main.h ranges.h string__.h

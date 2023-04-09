@@ -171,7 +171,7 @@ const char *get_str_http_prot(int i)
     return "";
 }
 //======================================================================
-const char *get_str_operation(int n)
+const char *get_str_operation(OPERATION_TYPE n)
 {
     switch (n)
     {
@@ -188,28 +188,26 @@ const char *get_str_operation(int n)
     return "?";
 }
 //======================================================================
-const char *get_cgi_status(int n)
+const char *get_cgi_status(CGI_STATUS n)
 {
     switch (n)
     {
-        case SCGI_CONNECT:
-            return "SCGI_CONNECT";
-        case SCGI_PARAMS:
-            return "SCGI_PARAMS";
-        case SCGI_STDIN:
-            return "SCGI_STDIN";
-        case SCGI_READ_HTTP_HEADERS:
-            return "SCGI_READ_HTTP_HEADERS";
-        case SCGI_SEND_HTTP_HEADERS:
-            return "SCGI_SEND_HTTP_HEADERS";
-        case SCGI_SEND_ENTITY:
-            return "SCGI_SEND_ENTITY";
+        case CGI_CREATE_PROC:
+            return "CGI_CREATE_PROC";
+        case CGI_STDIN:
+            return "CGI_STDIN";
+        case CGI_READ_HTTP_HEADERS:
+            return "CGI_READ_HTTP_HEADERS";
+        case CGI_SEND_HTTP_HEADERS:
+            return "CGI_SEND_HTTP_HEADERS";
+        case CGI_SEND_ENTITY:
+            return "CGI_SEND_ENTITY";
     }
 
     return "?";
 }
 //======================================================================
-const char *get_fcgi_status(int n)
+const char *get_fcgi_status(FCGI_STATUS n)
 {
     switch (n)
     {
@@ -240,7 +238,7 @@ const char *get_fcgi_status(int n)
     return "?";
 }
 //======================================================================
-const char *get_scgi_status(int n)
+const char *get_scgi_status(SCGI_STATUS n)
 {
     switch (n)
     {
@@ -261,7 +259,7 @@ const char *get_scgi_status(int n)
     return "?";
 }
 //======================================================================
-const char *get_cgi_type(int n)
+const char *get_cgi_type(CGI_TYPE n)
 {
     switch (n)
     {
@@ -282,7 +280,7 @@ const char *get_cgi_type(int n)
     return "?";
 }
 //======================================================================
-const char *get_cgi_dir(int n)
+const char *get_cgi_dir(DIRECT n)
 {
     switch (n)
     {

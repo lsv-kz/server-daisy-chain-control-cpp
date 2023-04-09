@@ -83,18 +83,18 @@ enum { EXIT_THR = 1 };
 
 enum MODE_SEND { NO_CHUNK, CHUNK, CHUNK_END };
 enum SOURCE_ENTITY { ENTITY_NONE, FROM_FILE, FROM_DATA_BUFFER, MULTIPART_ENTITY, };
-enum OPERATION_TYPE { READ_REQUEST, SEND_RESP_HEADERS, SEND_ENTITY, DYN_PAGE, };
-enum MULTIPART { SEND_HEADERS, SEND_PART, SEND_END };
-enum POLL_STATUS { WAIT, WORK };
+enum OPERATION_TYPE { READ_REQUEST = 1, SEND_RESP_HEADERS, SEND_ENTITY, DYN_PAGE, };
+enum MULTIPART { SEND_HEADERS = 1, SEND_PART, SEND_END };
+enum POLL_STATUS { WAIT = 1, WORK };
 
 enum CGI_TYPE { CGI_TYPE_NONE, CGI, PHPCGI, PHPFPM, FASTCGI, SCGI, };
-enum DIRECT { FROM_CGI, TO_CGI, FROM_CLIENT, TO_CLIENT };
+enum DIRECT { FROM_CGI = 1, TO_CGI, FROM_CLIENT, TO_CLIENT };
 
-enum CGI_STATUS  { CGI_CREATE_PROC, CGI_PARAMS, CGI_STDIN, CGI_READ_HTTP_HEADERS, CGI_SEND_HTTP_HEADERS, CGI_SEND_ENTITY };
-enum FCGI_STATUS { FASTCGI_CONNECT, FASTCGI_BEGIN, FASTCGI_PARAMS, FASTCGI_STDIN,
+enum CGI_STATUS  { CGI_CREATE_PROC = 1, CGI_STDIN, CGI_READ_HTTP_HEADERS, CGI_SEND_HTTP_HEADERS, CGI_SEND_ENTITY };
+enum FCGI_STATUS { FASTCGI_CONNECT = 1, FASTCGI_BEGIN, FASTCGI_PARAMS, FASTCGI_STDIN,
                     FASTCGI_READ_HEADER, FASTCGI_READ_HTTP_HEADERS, FASTCGI_SEND_HTTP_HEADERS, FASTCGI_SEND_ENTITY, 
                     FASTCGI_READ_ERROR, FASTCGI_READ_PADDING, FASTCGI_CLOSE };
-enum SCGI_STATUS { SCGI_CONNECT, SCGI_PARAMS, SCGI_STDIN, SCGI_READ_HTTP_HEADERS, SCGI_SEND_HTTP_HEADERS, SCGI_SEND_ENTITY, };
+enum SCGI_STATUS { SCGI_CONNECT = 1, SCGI_PARAMS, SCGI_STDIN, SCGI_READ_HTTP_HEADERS, SCGI_SEND_HTTP_HEADERS, SCGI_SEND_ENTITY, };
 
 const int PROC_LIMIT = 8;
 
@@ -403,6 +403,13 @@ const char *content_type(const char *s);
 const char *base_name(const char *path);
 int parse_startline_request(Connect *req, char *s);
 int parse_headers(Connect *req, char *s, int n);
+
+const char *get_str_operation(OPERATION_TYPE n);
+const char *get_cgi_status(CGI_STATUS n);
+const char *get_fcgi_status(FCGI_STATUS n);
+const char *get_scgi_status(SCGI_STATUS n);
+const char *get_cgi_type(CGI_TYPE n);
+const char *get_cgi_dir(DIRECT n);
 //----------------------------------------------------------------------
 void create_logfiles(const std::string &);
 void close_logs(void);

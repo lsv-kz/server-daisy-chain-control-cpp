@@ -25,7 +25,6 @@ int get_sock_fcgi(Connect *r, const char *script);
 void cgi_del_from_list(Connect *r);
 int cgi_set_size_chunk(Connect *r);
 int cgi_find_empty_line(Connect *req);
-const char *get_fcgi_status(int n);
 //======================================================================
 void fcgi_set_header(Connect* r, int type)
 {
@@ -107,6 +106,8 @@ void fcgi_set_param(Connect *r)
 //======================================================================
 int fcgi_create_connect(Connect *req)
 {
+    req->cgi->status.fcgi = FASTCGI_CONNECT;
+    req->cgi->dir = TO_CGI;
     if (req->reqMethod == M_POST)
     {
         if (req->req_hd.iReqContentType < 0)
@@ -303,6 +304,7 @@ int fcgi_create_connect(Connect *req)
     *(p++) = 0;
 
     req->cgi->status.fcgi = FASTCGI_BEGIN;
+    req->cgi->dir = TO_CGI;
     req->timeout = conf->TimeoutCGI;
     req->sock_timer = 0;
 
@@ -475,10 +477,8 @@ void fcgi_stdout(Connect *r)
 
             if (r->fcgi.paddingLen == 0)
             {
-                r->timeout = conf->TimeoutCGI;
                 r->sock_timer = 0;
                 r->cgi->status.fcgi = FASTCGI_READ_HEADER;
-                r->cgi->dir = FROM_CGI;
                 r->fcgi.ptr_header = r->cgi->buf;
                 r->fcgi.len_header = 0;
             }
@@ -513,10 +513,7 @@ void fcgi_stdout(Connect *r)
             {
                 if (r->fcgi.paddingLen == 0)
                 {
-                    r->timeout = conf->TimeoutCGI;
-                    r->sock_timer = 0;
                     r->cgi->status.fcgi = FASTCGI_READ_HEADER;
-                    r->cgi->dir = FROM_CGI;
                     r->fcgi.ptr_header = r->cgi->buf;
                     r->fcgi.len_header = 0;
                 }
@@ -582,9 +579,10 @@ int fcgi_read_http_headers(Connect *r)
     if (n == 1) // empty line found
     {
         r->cgi->status.fcgi = FASTCGI_SEND_HTTP_HEADERS;
+        r->cgi->dir = TO_CLIENT;
         r->timeout = conf->Timeout;
-        r->fcgi.http_headers_received = true;
         r->sock_timer = 0;
+        r->fcgi.http_headers_received = true;
         return r->cgi->len_buf;
     }
     else if (n < 0) // error
@@ -836,7 +834,6 @@ void fcgi_set_poll_list(Connect *r, int *i)
                     {
                         if (r->fcgi.paddingLen == 0)
                         {
-                            r->timeout = conf->TimeoutCGI;
                             r->cgi->status.fcgi = FASTCGI_READ_HEADER;
                             r->fcgi.ptr_header = r->cgi->buf;
                             r->fcgi.len_header = 0;
@@ -846,8 +843,6 @@ void fcgi_set_poll_list(Connect *r, int *i)
                             r->cgi->status.fcgi = FASTCGI_READ_PADDING;
                         }
 
-                        r->cgi->dir = FROM_CGI;
-                        r->timeout = conf->TimeoutCGI;
                         r->sock_timer = 0;
                     }
                     cgi_poll_fd[*i].fd = r->fcgi.fd;
@@ -906,6 +901,8 @@ void fcgi_worker(Connect* r)
             if (r->cgi->len_buf == 0)
             {
                 r->cgi->status.fcgi = FASTCGI_PARAMS;
+                r->cgi->dir = TO_CGI;
+                r->timeout = conf->TimeoutCGI;
             }
         }
         else if (ret == -1)
@@ -953,6 +950,8 @@ void fcgi_worker(Connect* r)
             {
                 r->cgi->status.fcgi = FASTCGI_READ_HEADER;
                 r->cgi->dir = FROM_CGI;
+                r->timeout = conf->TimeoutCGI;
+                r->sock_timer = 0;
                 r->fcgi.ptr_header = r->cgi->buf;
                 r->fcgi.len_header = 0;
 
@@ -971,6 +970,7 @@ void fcgi_worker(Connect* r)
             int ret = fcgi_read_header(r);
             if (ret == 8)
             {
+                r->sock_timer = 0;
                 switch (r->fcgi.fcgi_type)
                 {
                     case FCGI_STDOUT:
@@ -986,7 +986,6 @@ void fcgi_worker(Connect* r)
                         }
                         else
                         {
-                            r->timeout = conf->TimeoutCGI;
                             r->cgi->status.fcgi = FASTCGI_READ_HTTP_HEADERS;
                         }
                     }
@@ -997,6 +996,7 @@ void fcgi_worker(Connect* r)
                     case FCGI_END_REQUEST:
                     case FCGI_ABORT_REQUEST:
                         r->cgi->status.fcgi = FASTCGI_CLOSE;
+                        r->cgi->dir = TO_CGI;
                         break;
                     default:
                         print_err(r, "<%s:%d> Error type=%d\n", __func__, __LINE__, r->fcgi.fcgi_type);
@@ -1033,7 +1033,9 @@ void fcgi_worker(Connect* r)
                     r->resp_headers.p = r->resp_headers.s.c_str();
                     r->resp_headers.len = r->resp_headers.s.size();
                     r->cgi->status.fcgi = FASTCGI_SEND_HTTP_HEADERS;
+                    r->cgi->dir = TO_CLIENT;
                     r->timeout = conf->Timeout;
+                    r->sock_timer = 0;
                 }
             }
             else if (ret < 0)
@@ -1045,6 +1047,7 @@ void fcgi_worker(Connect* r)
             else
             {
                 r->timeout = conf->TimeoutCGI;
+                r->sock_timer = 0;
                 if (r->fcgi.dataLen == 0)
                 {
                     if (r->fcgi.paddingLen == 0)

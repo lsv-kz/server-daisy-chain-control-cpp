@@ -22,14 +22,19 @@ protected:
     void check_ranges();
     void parse_ranges(char *sRange);
 
-    void reserve()
+    void reserve(unsigned int n)
     {
         if (err) return;
-        if (SizeArray <= 0)
+        if (n == 0)
         {
             err = 1;
             return;
         }
+        else if (n <= SizeArray)
+            return;
+        SizeArray = n;
+        if (range)
+            delete [] range;
 
         range = new(std::nothrow) Range [SizeArray];
         if (!range)
@@ -49,7 +54,11 @@ public:
 
     ArrayRanges(const ArrayRanges&) = delete;
 
-    ~ArrayRanges() { if (range) { delete [] range; } }
+    ~ArrayRanges()
+    {
+        if (range)
+            delete [] range;
+    }
 
     void init(char *s, long long sz);
 

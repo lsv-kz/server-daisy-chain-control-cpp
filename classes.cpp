@@ -223,9 +223,6 @@ void ArrayRanges::parse_ranges(char *sRange)
 void ArrayRanges::init(char *s, long long sz)
 {
     err = 0;
-    SizeArray = nRanges = i = 0;
-    range = NULL;
-
     if (!s)
     {
         err = RS500;
@@ -238,17 +235,20 @@ void ArrayRanges::init(char *s, long long sz)
         return;
     }
 
+    nRanges = i = 0;
+
+    unsigned int n = 0;
     for ( char *p = s; *p; ++p)
     {
         if (*p == ',')
-            SizeArray++;
+            n++;
     }
 
-    SizeArray++;
+    n++;
 
-    if (SizeArray > conf->MaxRanges)
-        SizeArray = conf->MaxRanges;
-    reserve();
+    if (n > conf->MaxRanges)
+        n = conf->MaxRanges;
+    reserve(n);
     sizeFile = sz;
     parse_ranges(s);
     if ((nRanges == 0) && (err == 0))

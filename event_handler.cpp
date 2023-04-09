@@ -185,7 +185,7 @@ static int set_poll()
         next = r->next;
         if (((t - r->sock_timer) >= r->timeout) && (r->sock_timer != 0))
         {
-            print_err(r, "<%s:%d> operation=%d, Timeout = %ld\n", __func__, __LINE__, r->operation, t - r->sock_timer);
+            print_err(r, "<%s:%d> operation=%s, Timeout = %ld\n", __func__, __LINE__, get_str_operation(r->operation), t - r->sock_timer);
             del_from_list(r);
             if (r->operation != READ_REQUEST)
             {

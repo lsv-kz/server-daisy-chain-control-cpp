@@ -12,9 +12,6 @@ int write_to_fcgi(Connect* r);
 int cgi_read_hdrs(Connect *req);
 int cgi_stdin(Connect *req);
 int cgi_stdout(Connect *req);
-const char *get_scgi_status(int n);
-const char *get_cgi_type(int n);
-const char *get_cgi_dir(int n);
 //======================================================================
 int scgi_set_size_data(Connect* r)
 {
@@ -43,6 +40,8 @@ int scgi_set_size_data(Connect* r)
 //======================================================================
 int scgi_create_connect(Connect *req)
 {
+    req->cgi->status.scgi = SCGI_CONNECT;
+    req->cgi->dir = TO_CGI;
     if (req->reqMethod == M_POST)
     {
         if (req->req_hd.iReqContentType < 0)
@@ -220,7 +219,10 @@ int scgi_create_connect(Connect *req)
     req->fcgi.i_param = 0;
     
     req->cgi->status.scgi = SCGI_PARAMS;
+    req->cgi->dir = TO_CGI;
     req->cgi->len_buf = 0;
+    req->timeout = conf->TimeoutCGI;
+    req->sock_timer = 0;
 
     return 0;
 }

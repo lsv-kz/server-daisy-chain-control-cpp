@@ -22,9 +22,6 @@ static void cgi_worker(Connect* r);
 void cgi_set_status_readheaders(Connect *r);
 int timeout_cgi(Connect *r);
 int cgi_create_pipes(Connect *req);
-const char *get_cgi_status(int n);
-const char *get_cgi_type(int n);
-const char *get_cgi_dir(int n);
 
 void fcgi_set_poll_list(Connect *r, int *i);
 void fcgi_worker(Connect* r);
@@ -211,16 +208,16 @@ static int set_poll_list()
             if ((r->cgi_type == CGI) || (r->cgi_type == PHPCGI))
                 r->err = timeout_cgi(r);
             else if ((r->cgi_type == PHPFPM) || (r->cgi_type == FASTCGI))
-                r->err = timeout_cgi(r);
+                r->err = timeout_fcgi(r);
             else if (r->cgi_type == SCGI)
                 r->err = timeout_scgi(r);
             else
             {
-                print_err(r, "<%s:%d> operation=%d, cgi_type=%ld\n", __func__, __LINE__, r->operation, r->cgi_type);
+                print_err(r, "<%s:%d> cgi_type=%s\n", __func__, __LINE__, get_cgi_type(r->cgi_type));
                 r->err = -1;
             }
 
-            print_err(r, "<%s:%d> op=%d, Timeout=%ld\n", __func__, __LINE__, r->operation, t - r->sock_timer);
+            print_err(r, "<%s:%d> Timeout=%ld\n", __func__, __LINE__, t - r->sock_timer);
 
             r->req_hd.iReferer = MAX_HEADERS - 1;
             r->reqHdValue[r->req_hd.iReferer] = "Timeout";
@@ -797,8 +794,22 @@ int cgi_stdin(Connect *req)
                 {
                     close(req->cgi->to_script);
                     req->cgi->to_script = -1;
+                    cgi_set_status_readheaders(req);
                 }
-                cgi_set_status_readheaders(req);
+                else if (req->cgi_type == SCGI)
+                {
+                    req->cgi->status.scgi = SCGI_READ_HTTP_HEADERS;
+                    req->tail = NULL;
+                    req->lenTail = 0;
+                    req->p_newline = req->cgi->buf;
+                    req->cgi->len_buf = 0;
+                    req->timeout = conf->TimeoutCGI;
+                }
+                else
+                {
+                    print_err(req, "<%s:%d> ??? Error: CGI_TYPE=%s\n", __func__, __LINE__, get_cgi_type(req->cgi_type));
+                    return -1;
+                }
             }
             else
                 req->cgi->dir = FROM_CLIENT;
@@ -1227,6 +1238,7 @@ static void cgi_worker(Connect* r)
 void cgi_set_status_readheaders(Connect *r)
 {
     r->cgi->status.cgi = CGI_READ_HTTP_HEADERS;
+    r->cgi->dir = FROM_CGI;
     r->tail = NULL;
     r->lenTail = 0;
     r->p_newline = r->cgi->buf;

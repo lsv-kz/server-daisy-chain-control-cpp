@@ -244,7 +244,7 @@ int find_bracket(FILE *f, char c)
     return 0;
 }
 //======================================================================
-void create_fcgi_list(fcgi_list_addr **l, const string &s1, const string &s2, int type)
+void create_fcgi_list(fcgi_list_addr **l, const string &s1, const string &s2, CGI_TYPE type)
 {
     if (l == NULL)
     {

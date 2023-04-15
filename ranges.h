@@ -12,11 +12,11 @@ struct Range {
     long long len;
 };
 //----------------------------------------------------------------------
-class ArrayRanges
+class Ranges
 {
 protected:
     Range *range;
-    unsigned int SizeArray, nRanges, i;
+    unsigned int SizeArray, nRanges, index;
     long long sizeFile;
     int err;
     void check_ranges();
@@ -45,16 +45,16 @@ protected:
     }
 
 public:
-    ArrayRanges()
+    Ranges()
     {
         err = 0;
-        SizeArray = nRanges = i = 0;
+        SizeArray = nRanges = index = 0;
         range = NULL;
     }
 
-    ArrayRanges(const ArrayRanges&) = delete;
+    Ranges(const Ranges&) = delete;
 
-    ~ArrayRanges()
+    ~Ranges()
     {
         if (range)
             delete [] range;
@@ -62,7 +62,7 @@ public:
 
     void init(char *s, long long sz);
 
-    ArrayRanges & operator << (const Range& val)
+    Ranges & operator << (const Range& val)
     {
         if (err) return *this;
         if (!range || (nRanges >= SizeArray))
@@ -80,15 +80,13 @@ public:
         if (err)
             return NULL;
 
-        if (i < nRanges)
-        {
-            return range + (i++);
-        }
+        if (index < nRanges)
+            return range + (index++);
         else
             return NULL;
     }
 
-    void set_index() { i = 0; }
+    void set_index() { index = 0; }
     int size() { if (err) return 0; return nRanges; }
     int capacity() { if (err) return 0; return SizeArray; }
     int error() { return -err; }

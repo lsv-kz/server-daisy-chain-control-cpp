@@ -421,9 +421,9 @@ static void worker(int num_chld, int npoll, RequestManager *ReqMan)
                         }
                     }
                 }
-                else if (wr == 0)
-                    r->sock_timer = 0;
             }
+            else if (wr == 0)
+                r->sock_timer = 0;
         }
         else if (r->operation == READ_REQUEST)
         {

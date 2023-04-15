@@ -50,21 +50,8 @@
 
 #define     MAX_PATH          2048
 #define     MAX_NAME           256
-#define     SIZE_BUF_REQUEST   8192
+#define     SIZE_BUF_REQUEST  8192
 #define     MAX_HEADERS         25
-
-typedef struct fcgi_list_addr {
-    std::string script_name;
-    std::string addr;
-    int type;
-    struct fcgi_list_addr *next;
-} fcgi_list_addr;
-
-struct Param
-{
-    std::string name;
-    std::string val;
-};
 
 enum {
     RS101 = 101,
@@ -90,20 +77,25 @@ enum POLL_STATUS { WAIT = 1, WORK };
 enum CGI_TYPE { CGI_TYPE_NONE, CGI, PHPCGI, PHPFPM, FASTCGI, SCGI, };
 enum DIRECT { FROM_CGI = 1, TO_CGI, FROM_CLIENT, TO_CLIENT };
 
-enum CGI_STATUS  { CGI_CREATE_PROC = 1, CGI_STDIN, CGI_READ_HTTP_HEADERS, CGI_SEND_HTTP_HEADERS, CGI_SEND_ENTITY };
-enum FCGI_STATUS { FASTCGI_CONNECT = 1, FASTCGI_BEGIN, FASTCGI_PARAMS, FASTCGI_STDIN,
-                    FASTCGI_READ_HEADER, FASTCGI_READ_HTTP_HEADERS, FASTCGI_SEND_HTTP_HEADERS, FASTCGI_SEND_ENTITY, 
-                    FASTCGI_READ_ERROR, FASTCGI_READ_PADDING, FASTCGI_CLOSE };
-enum SCGI_STATUS { SCGI_CONNECT = 1, SCGI_PARAMS, SCGI_STDIN, SCGI_READ_HTTP_HEADERS, SCGI_SEND_HTTP_HEADERS, SCGI_SEND_ENTITY, };
+enum FCGI_OPERATION { FASTCGI_CONNECT, FASTCGI_BEGIN, FASTCGI_PARAMS, FASTCGI_STDIN, FASTCGI_END_STDIN, 
+                      FASTCGI_READ_HTTP_HEADERS, FASTCGI_SEND_HTTP_HEADERS, 
+                      FASTCGI_READ_ENTITY, FASTCGI_READ_ERROR, FASTCGI_CLOSE };
+
+enum FCGI_STATUS {FCGI_READ_DATA,  FCGI_READ_HEADER, FCGI_READ_PADDING }; 
+
+
+enum CGI_OPERATION { CGI_CREATE_PROC = 1, CGI_STDIN, CGI_READ_HTTP_HEADERS, CGI_SEND_HTTP_HEADERS, CGI_READ_ENTITY };
+
+enum SCGI_OPERATION { SCGI_CONNECT = 1, SCGI_PARAMS, SCGI_STDIN, SCGI_READ_HTTP_HEADERS, SCGI_SEND_HTTP_HEADERS, SCGI_READ_ENTITY };
 
 const int PROC_LIMIT = 8;
 
 void print_err(const char *format, ...);
 
-union STATUS { CGI_STATUS cgi; FCGI_STATUS fcgi; SCGI_STATUS scgi;};
+union OPERATION { CGI_OPERATION cgi; FCGI_OPERATION fcgi; SCGI_OPERATION scgi;};
 struct Cgi
 {
-    STATUS status;
+    OPERATION op;
     DIRECT dir;
     char buf[8 + 4096 + 8];
     int  size_buf = 4096;
@@ -114,6 +106,19 @@ struct Cgi
     pid_t pid;
     int  to_script;
     int  from_script;
+};
+
+typedef struct fcgi_list_addr {
+    std::string script_name;
+    std::string addr;
+    CGI_TYPE type;
+    struct fcgi_list_addr *next;
+} fcgi_list_addr;
+
+struct Param
+{
+    std::string name;
+    std::string val;
 };
 /* ---------------------------------------------------------------------
  *                  Commands send to next process
@@ -290,7 +295,7 @@ public:
 
     struct
     {
-        bool http_headers_received;
+        FCGI_STATUS status;
         int fd;
 
         int i_param;
@@ -304,7 +309,7 @@ public:
         int len_header;
     } fcgi;
 
-    ArrayRanges rg;
+    Ranges rg;
     struct
     {
         MULTIPART status;
@@ -405,9 +410,10 @@ int parse_startline_request(Connect *req, char *s);
 int parse_headers(Connect *req, char *s, int n);
 
 const char *get_str_operation(OPERATION_TYPE n);
-const char *get_cgi_status(CGI_STATUS n);
+const char *get_cgi_operation(CGI_OPERATION n);
+const char *get_fcgi_operation(FCGI_OPERATION n);
 const char *get_fcgi_status(FCGI_STATUS n);
-const char *get_scgi_status(SCGI_STATUS n);
+const char *get_scgi_operation(SCGI_OPERATION n);
 const char *get_cgi_type(CGI_TYPE n);
 const char *get_cgi_dir(DIRECT n);
 //----------------------------------------------------------------------

@@ -37,7 +37,7 @@ void Connect::init()
     send_bytes = 0LL;
 }
 //======================================================================
-/*void ArrayRanges::check_ranges()
+/*void Ranges::check_ranges()
 {
     if (err) return;
     Range *r = range;
@@ -72,7 +72,7 @@ void Connect::init()
     }
 }*/
 //----------------------------------------------------------------------
-void ArrayRanges::check_ranges()
+void Ranges::check_ranges()
 {
     if (err) return;
     int num = nRanges;
@@ -116,7 +116,7 @@ void ArrayRanges::check_ranges()
     }
 }
 //----------------------------------------------------------------------
-void ArrayRanges::parse_ranges(char *sRange)
+void Ranges::parse_ranges(char *sRange)
 {
     if (err) return;
     long long start = 0, end = 0, size = sizeFile, ll;
@@ -220,7 +220,7 @@ void ArrayRanges::parse_ranges(char *sRange)
     }
 }
 //----------------------------------------------------------------------
-void ArrayRanges::init(char *s, long long sz)
+void Ranges::init(char *s, long long sz)
 {
     err = 0;
     if (!s)
@@ -235,7 +235,7 @@ void ArrayRanges::init(char *s, long long sz)
         return;
     }
 
-    nRanges = i = 0;
+    nRanges = index = 0;
 
     unsigned int n = 0;
     for ( char *p = s; *p; ++p)

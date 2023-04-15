@@ -180,11 +180,11 @@ void print_config()
          << "\n   Group                  : " << conf->group.c_str()
          << "\n";
 
-    cout << "   ------------- FastCGI -------------\n";
+    cout << "   ------------- FastCGI/SCGI -------------\n";
     fcgi_list_addr *i = conf->fcgi_list;
     for (; i; i = i->next)
     {
-        cout << "   [" << i->script_name.c_str() << " : " << i->addr.c_str() << "]\n";
+        cout << "   [" << i->script_name.c_str() << " : " << i->addr.c_str() << "] - " << get_cgi_type(i->type) << "\n";
     }
 }
 //======================================================================

@@ -134,7 +134,6 @@ int fastcgi(Connect* req, const char* uri)
     const char* p = strrchr(uri, '/');
     if (!p)
         return -RS404;
-
     fcgi_list_addr* i = conf->fcgi_list;
     for (; i; i = i->next)
     {
@@ -364,7 +363,7 @@ int send_file(Connect *req)
         req->rg.init(req->sRange, req->fileSize);
         if ((err = req->rg.error()))
         {
-            print_err(req, "<%s:%d> Error create_ranges\n", __func__, __LINE__);
+            print_err(req, "<%s:%d> Error init Ranges\n", __func__, __LINE__);
             return err;
         }
 

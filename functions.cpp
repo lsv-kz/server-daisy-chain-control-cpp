@@ -188,7 +188,7 @@ const char *get_str_operation(OPERATION_TYPE n)
     return "?";
 }
 //======================================================================
-const char *get_cgi_status(CGI_STATUS n)
+const char *get_cgi_operation(CGI_OPERATION n)
 {
     switch (n)
     {
@@ -200,14 +200,14 @@ const char *get_cgi_status(CGI_STATUS n)
             return "CGI_READ_HTTP_HEADERS";
         case CGI_SEND_HTTP_HEADERS:
             return "CGI_SEND_HTTP_HEADERS";
-        case CGI_SEND_ENTITY:
-            return "CGI_SEND_ENTITY";
+        case CGI_READ_ENTITY:
+            return "CGI_READ_ENTITY";
     }
 
     return "?";
 }
 //======================================================================
-const char *get_fcgi_status(FCGI_STATUS n)
+const char *get_fcgi_operation(FCGI_OPERATION n)
 {
     switch (n)
     {
@@ -219,18 +219,16 @@ const char *get_fcgi_status(FCGI_STATUS n)
             return "FASTCGI_PARAMS";
         case FASTCGI_STDIN:
             return "FASTCGI_STDIN";
-        case FASTCGI_READ_HEADER:
-            return "FASTCGI_READ_HEADER";
+        case FASTCGI_END_STDIN:
+            return "FASTCGI_END_STDIN";
         case FASTCGI_READ_HTTP_HEADERS:
             return "FASTCGI_READ_HTTP_HEADERS";
         case FASTCGI_SEND_HTTP_HEADERS:
             return "FASTCGI_SEND_HTTP_HEADERS";
-        case FASTCGI_SEND_ENTITY:
-            return "FASTCGI_SEND_ENTITY";
+        case FASTCGI_READ_ENTITY:
+            return "FASTCGI_READ_ENTITY";
         case FASTCGI_READ_ERROR:
             return "FASTCGI_READ_ERROR";
-        case FASTCGI_READ_PADDING:
-            return "FASTCGI_READ_PADDING";
         case FASTCGI_CLOSE:
             return "FASTCGI_CLOSE";
     }
@@ -238,7 +236,22 @@ const char *get_fcgi_status(FCGI_STATUS n)
     return "?";
 }
 //======================================================================
-const char *get_scgi_status(SCGI_STATUS n)
+const char *get_fcgi_status(FCGI_STATUS n)
+{
+    switch (n)
+    {
+        case FCGI_READ_DATA:
+            return "FCGI_READ_DATA";
+        case FCGI_READ_HEADER:
+            return "FCGI_READ_HEADER";
+        case FCGI_READ_PADDING:
+            return "FCGI_READ_PADDING";
+    }
+
+    return "?";
+}
+//======================================================================
+const char *get_scgi_operation(SCGI_OPERATION n)
 {
     switch (n)
     {
@@ -252,8 +265,8 @@ const char *get_scgi_status(SCGI_STATUS n)
             return "SCGI_READ_HTTP_HEADERS";
         case SCGI_SEND_HTTP_HEADERS:
             return "SCGI_SEND_HTTP_HEADERS";
-        case SCGI_SEND_ENTITY:
-            return "SCGI_SEND_ENTITY";
+        case SCGI_READ_ENTITY:
+            return "SCGI_READ_ENTITY";
     }
 
     return "?";

@@ -82,7 +82,6 @@ int create_fcgi_socket(const char *host)
     n = sscanf(host, "%[^:]:%s", addr, port);
     if (n == 2) //==== AF_INET ====
     {
-        const int sock_opt = 1;
         struct sockaddr_in sock_addr;
         memset(&sock_addr, 0, sizeof(sock_addr));
 
@@ -93,6 +92,7 @@ int create_fcgi_socket(const char *host)
             return -1;
         }
 
+        const int sock_opt = 1;
         if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, (void *)&sock_opt, sizeof(sock_opt)))
         {
             print_err("<%s:%d> Error setsockopt(TCP_NODELAY): %s\n", __func__, __LINE__, strerror(errno));

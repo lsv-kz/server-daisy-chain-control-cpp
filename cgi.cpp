@@ -15,6 +15,8 @@ static condition_variable cond_;
 
 static int close_thr = 0;
 static unsigned int num_wait, num_work, all_;
+
+static int n_poll;
 //----------------------------------------------------------------------
 int cgi_set_size_chunk(Connect *req);
 static void cgi_set_poll_list(Connect *r, int*);
@@ -87,7 +89,10 @@ void cgi_del_from_list(Connect *r)
                 (r->cgi_type == SCGI))
         {
             if (r->fcgi.fd > 0)
+            {
+                shutdown(r->fcgi.fd, SHUT_RDWR);
                 close(r->fcgi.fd);
+            }
         }
         
         delete r->cgi;
@@ -161,8 +166,9 @@ mtx_.lock();
                     end_response(r);
                     continue;
                 }
-                
+
                 r->fcgi.status = FCGI_READ_DATA;
+                r->fcgi.len_header = 0;
             }
             else if (r->cgi_type == SCGI)
             {
@@ -196,101 +202,120 @@ all_ = num_work;
 mtx_.unlock();
 }
 //======================================================================
-static int set_poll_list()
+static void set_poll_list(Connect *r, time_t t)
 {
-    int i = 0;
-    time_t t = time(NULL);
+    if (r->sock_timer == 0)
+        r->sock_timer = t;
 
+    if (((t - r->sock_timer) >= r->timeout) && (r->sock_timer != 0))
+    {
+        if ((r->cgi_type == CGI) || (r->cgi_type == PHPCGI))
+            r->err = timeout_cgi(r);
+        else if ((r->cgi_type == PHPFPM) || (r->cgi_type == FASTCGI))
+            r->err = timeout_fcgi(r);
+        else if (r->cgi_type == SCGI)
+            r->err = timeout_scgi(r);
+        else
+        {
+            print_err(r, "<%s:%d> cgi_type=%s\n", __func__, __LINE__, get_cgi_type(r->cgi_type));
+            r->err = -1;
+        }
+
+        print_err(r, "<%s:%d> Timeout=%ld\n", __func__, __LINE__, t - r->sock_timer);
+
+        r->req_hd.iReferer = MAX_HEADERS - 1;
+        r->reqHdValue[r->req_hd.iReferer] = "Timeout";
+        cgi_del_from_list(r);
+        end_response(r);
+    }
+    else
+    {
+        switch (r->cgi_type)
+        {
+            case CGI:
+            case PHPCGI:
+                cgi_set_poll_list(r, &n_poll);
+                break;
+            case PHPFPM:
+            case FASTCGI:
+                fcgi_set_poll_list(r, &n_poll);
+                break;
+            case SCGI:
+                scgi_set_poll_list(r, &n_poll);
+                break;
+            default:
+                print_err(r, "<%s:%d> ??? Error: CGI_TYPE=%s\n", __func__, __LINE__, get_cgi_type(r->cgi_type));
+                r->err = -RS500;
+                cgi_del_from_list(r);
+                end_response(r);
+                break;
+        }
+    }
+}
+//======================================================================
+static void worker(Connect *r)
+{
+    if ((r->cgi_type == CGI) || (r->cgi_type == PHPCGI))
+    {
+        cgi_worker(r);
+    }
+    else if ((r->cgi_type == PHPFPM) || (r->cgi_type == FASTCGI))
+    {
+        fcgi_worker(r);
+    }
+    else if (r->cgi_type == SCGI)
+    {
+        scgi_worker(r);
+    }
+}
+//======================================================================
+static void set_poll_list()
+{
+    time_t t = time(NULL);
+    n_poll = 0;
     Connect *r = work_list_start, *next = NULL;
     for ( ; r; r = next)
     {
         next = r->next;
-        if (((t - r->sock_timer) >= r->timeout) && (r->sock_timer != 0))
-        {
-            if ((r->cgi_type == CGI) || (r->cgi_type == PHPCGI))
-                r->err = timeout_cgi(r);
-            else if ((r->cgi_type == PHPFPM) || (r->cgi_type == FASTCGI))
-                r->err = timeout_fcgi(r);
-            else if (r->cgi_type == SCGI)
-                r->err = timeout_scgi(r);
-            else
-            {
-                print_err(r, "<%s:%d> cgi_type=%s\n", __func__, __LINE__, get_cgi_type(r->cgi_type));
-                r->err = -1;
-            }
-
-            print_err(r, "<%s:%d> Timeout=%ld\n", __func__, __LINE__, t - r->sock_timer);
-
-            r->req_hd.iReferer = MAX_HEADERS - 1;
-            r->reqHdValue[r->req_hd.iReferer] = "Timeout";
-            cgi_del_from_list(r);
-            end_response(r);
-        }
-        else
-        {
-            if (r->sock_timer == 0)
-                r->sock_timer = t;
-            
-            switch (r->cgi_type)
-            {
-                case CGI:
-                case PHPCGI:
-                    cgi_set_poll_list(r, &i);
-                    break;
-                case PHPFPM:
-                case FASTCGI:
-                    fcgi_set_poll_list(r, &i);
-                    break;
-                case SCGI:
-                    scgi_set_poll_list(r, &i);
-                    break;
-                default:
-                    print_err(r, "<%s:%d> ??? Error: CGI_TYPE=%s\n", __func__, __LINE__, get_cgi_type(r->cgi_type));
-                    r->err = -RS500;
-                    cgi_del_from_list(r);
-                    end_response(r);
-                    break;
-            }
-        }
+        set_poll_list(r, t);
     }
-
-    return i;
 }
 //======================================================================
-static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
+static int cgi_poll(int num_chld, RequestManager *ReqMan)
 {
-    int ret = poll(cgi_poll_fd, nfd, conf->TimeoutPoll);
-    if (ret == -1)
+    int ret = 0;
+    if (n_poll > 0)
     {
-        print_err("[%d]<%s:%d> Error poll(): %s\n", num_chld, __func__, __LINE__, strerror(errno));
-        return -1;
+        ret = poll(cgi_poll_fd, n_poll, conf->TimeoutPoll);
+        if (ret == -1)
+        {
+            print_err("[%d]<%s:%d> Error poll(): %s\n", num_chld, __func__, __LINE__, strerror(errno));
+            return -1;
+        }
+        else if (ret == 0)
+            return 0;
     }
-    else if (ret == 0)
-    {
-        //print_err("[%d]<%s:%d> poll()=0\n", num_chld, __func__, __LINE__);
+    else
         return 0;
-    }
-//print_err("[%d]<%s:%d> poll()=%d, [nfd=%d], all=%d\n", num_chld, __func__, __LINE__, ret, nfd, all_);
 
-    Connect *r = work_list_start, *next;
     int i = 0;
-    for ( ; (i < nfd) && (ret > 0) && r; r = next, ++i)
+    Connect *r = work_list_start, *next;
+    for ( ; (ret > 0) && r; r = next)
     {
         next = r->next;
         if (cgi_poll_fd[i].revents == POLLOUT)
         {
-            r->poll_status = WORK;
             --ret;
+            worker(r);
         }
         else if (cgi_poll_fd[i].revents & POLLIN)
         {
-            r->poll_status = WORK;
             --ret;
+            worker(r);
         }
         else if (cgi_poll_fd[i].revents)
         {
             --ret;
-
             if (cgi_poll_fd[i].fd == r->clientSocket)
             {
                 print_err(r, "<%s:%d> Error: fd=%d, events=0x%x(0x%x), send_bytes=%lld\n", 
@@ -416,37 +441,11 @@ static int cgi_poll(int num_chld, int nfd, RequestManager *ReqMan)
                 }
             }
         }
-        else
-        {
-            r->poll_status = WAIT;
-        }
+
+        ++i;
     }
 
     return i;
-}
-//======================================================================
-static void cgi_worker(int num_chld, int npoll, RequestManager *ReqMan)
-{
-    Connect *r = work_list_start, *next;
-    for ( ; (npoll > 0) && r; r = next, --npoll)
-    {
-        next = r->next;
-        if (r->poll_status == WAIT)
-            continue;
-
-        if ((r->cgi_type == CGI) || (r->cgi_type == PHPCGI))
-        {
-            cgi_worker(r);
-        }
-        else if ((r->cgi_type == PHPFPM) || (r->cgi_type == FASTCGI))
-        {
-            fcgi_worker(r);
-        }
-        else if (r->cgi_type == SCGI)
-        {
-            scgi_worker(r);
-        }
-    }
 }
 //======================================================================
 void cgi_handler(RequestManager *ReqMan)
@@ -474,13 +473,9 @@ void cgi_handler(RequestManager *ReqMan)
         }
 
         cgi_add_work_list();
-        int size_poll_list = set_poll_list();
-        if (size_poll_list > 0)
-        {
-            int npoll = cgi_poll(num_chld, size_poll_list, ReqMan);
-            if (npoll > 0)
-                cgi_worker(num_chld, npoll, ReqMan);
-        }
+        set_poll_list();
+        if (cgi_poll(num_chld, ReqMan) < 0)
+            break;
     }
 
     delete [] cgi_poll_fd;
@@ -754,12 +749,11 @@ int cgi_stdin(Connect *req)
     if (req->cgi->dir == FROM_CLIENT)
     {
         int rd = (req->cgi->len_post > req->cgi->size_buf) ? req->cgi->size_buf : req->cgi->len_post;
-        req->cgi->len_buf = read(req->clientSocket, req->cgi->buf, rd);
-        if (req->cgi->len_buf == -1)
+        req->cgi->len_buf = read_from_client(req, req->cgi->buf, rd);
+        if (req->cgi->len_buf < 0)
         {
-            if (errno == EAGAIN)
+            if (req->cgi->len_buf == -EAGAIN)
                 return -EAGAIN;
-            print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
             return -1;
         }
         else if (req->cgi->len_buf == 0)
@@ -873,11 +867,10 @@ int cgi_stdout(Connect *req)
     }
     else if (req->cgi->dir == TO_CLIENT)
     {
-        int ret = write(req->clientSocket, req->cgi->p, req->cgi->len_buf);
-        if (ret == -1)
+        int ret = write_to_client(req, req->cgi->p, req->cgi->len_buf);
+        if (ret < 0)
         {
-            print_err(req, "<%s:%d> Error send to client: %s\n", __func__, __LINE__, strerror(errno));
-            if (errno == EAGAIN)
+            if (ret == -EAGAIN)
                 return -EAGAIN;
             return -1;
         }
@@ -990,6 +983,7 @@ int cgi_read_hdrs(Connect *req)
     int n = read(fd, req->cgi->p, num_read);
     if (n == -1)
     {
+        print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
         if (errno == EAGAIN)
             return -EAGAIN;
         return -1;
@@ -1106,7 +1100,7 @@ static void cgi_worker(Connect* r)
     {
         int rd = cgi_read_hdrs(r);
         if (rd == -EAGAIN)
-            r->sock_timer = 0;
+            return;
         else if (rd < 0)
         {
             r->err = rd;
@@ -1138,13 +1132,11 @@ static void cgi_worker(Connect* r)
     {
         if (r->resp_headers.len > 0)
         {
-            int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
+            int wr = write_to_client(r, r->resp_headers.p, r->resp_headers.len);
             if (wr < 0)
             {
-                if (errno == EAGAIN)
-                {
-                    r->sock_timer = 0;
-                }
+                if (wr == -EAGAIN)
+                    return;
                 else
                 {
                     r->err = -1;
@@ -1225,9 +1217,7 @@ static void cgi_worker(Connect* r)
     {
         int ret = cgi_stdout(r);
         if (ret == -EAGAIN)
-        {
-            r->sock_timer = 0;
-        }
+            return;
         else if (ret < 0)
         {
             r->err = -1;

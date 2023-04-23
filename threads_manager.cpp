@@ -161,9 +161,7 @@ unique_lock<mutex> lk(mtx_conn);
 void close_connect(Connect *req)
 {
     shutdown(req->clientSocket, SHUT_RDWR);
-    int err = close(req->clientSocket);
-    if (err)
-        print_err(req, "<%s:%d> Error close(): %s\n", __func__, __LINE__, strerror(errno));
+    close(req->clientSocket);
     delete req;
 
 mtx_conn.lock();
@@ -210,7 +208,8 @@ void end_response(Connect *req)
         req->init();
         req->timeout = conf->TimeoutKeepAlive;
         ++req->numReq;
-        push_get_request(req);
+        req->operation = READ_REQUEST;
+        push_pollin_list(req);
     }
 }
 //======================================================================
@@ -489,8 +488,10 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
                 req->remoteAddr[0] = 0;
             }
 
+            req->operation = READ_REQUEST;
+
             start_conn();
-            push_get_request(req);
+            push_pollin_list(req);
         }
 
         if (ret_poll)

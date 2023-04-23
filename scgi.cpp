@@ -382,7 +382,7 @@ void scgi_worker(Connect* r)
         {
             int ret = cgi_read_hdrs(r);
             if (ret == -EAGAIN)
-                r->sock_timer = 0;
+                return;
             if (ret < 0)
             {
                 print_err(r, "<%s:%d> Error Error cgi_read_hdrs()=%d\n", __func__, __LINE__, ret);
@@ -415,11 +415,11 @@ void scgi_worker(Connect* r)
         {
             if (r->resp_headers.len > 0)
             {
-                int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
+                int wr = write_to_client(r, r->resp_headers.p, r->resp_headers.len);
                 if (wr < 0)
                 {
-                    if (errno == EAGAIN)
-                        r->sock_timer = 0;
+                    if (wr == -EAGAIN)
+                        return;
                     else
                     {
                         r->err = -1;
@@ -491,9 +491,7 @@ void scgi_worker(Connect* r)
         {
             int ret = cgi_stdout(r);
             if (ret == -EAGAIN)
-            {
-                r->sock_timer = 0;
-            }
+                return;
             else if (ret < 0)
             {
                 r->err = -1;

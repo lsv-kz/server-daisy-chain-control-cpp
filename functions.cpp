@@ -188,6 +188,19 @@ const char *get_str_operation(OPERATION_TYPE n)
     return "?";
 }
 //======================================================================
+const char *get_io_status(IO_STATUS n)
+{
+    switch (n)
+    {
+        case POLL:
+            return "POLL";
+        case WORK:
+            return "WORK";
+    }
+
+    return "?";
+}
+//======================================================================
 const char *get_cgi_operation(CGI_OPERATION n)
 {
     switch (n)
@@ -219,8 +232,6 @@ const char *get_fcgi_operation(FCGI_OPERATION n)
             return "FASTCGI_PARAMS";
         case FASTCGI_STDIN:
             return "FASTCGI_STDIN";
-        case FASTCGI_END_STDIN:
-            return "FASTCGI_END_STDIN";
         case FASTCGI_READ_HTTP_HEADERS:
             return "FASTCGI_READ_HTTP_HEADERS";
         case FASTCGI_SEND_HTTP_HEADERS:

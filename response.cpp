@@ -116,7 +116,6 @@ void response1(RequestManager *ReqMan)
 }
 //======================================================================
 int send_file(Connect *req);
-const char boundary[] = "---------a9b5r7a4c0a2d5a1b8r3a";
 int send_multypart(Connect *req);
 //======================================================================
 long long file_size(const char *s)

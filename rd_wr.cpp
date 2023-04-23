@@ -37,34 +37,6 @@ int poll_in(int fd, int timeout)
     return -1;
 }
 //======================================================================
-int poll_out(int fd, int timeout)
-{
-    int ret, tm;
-    struct pollfd fdwr;
-
-    tm = (timeout == -1) ? -1 : (timeout * 1000);
-
-    fdwr.fd = fd;
-    fdwr.events = POLLOUT;
-    while (1)
-    {
-        ret = poll(&fdwr, 1, tm);
-        if (ret == -1)
-        {
-            if (errno == EINTR)
-                continue;
-            break;
-        }
-
-        else if (!ret)
-            return 0;
-
-        return fdwr.revents;
-    }
-
-    return -1;
-}
-//======================================================================
 int read_from_pipe(int fd, char *buf, int len, int timeout)
 {
     int read_bytes = 0, ret;
@@ -101,70 +73,36 @@ int read_from_pipe(int fd, char *buf, int len, int timeout)
     return read_bytes;
 }
 //======================================================================
-int write_to_client(Connect *req, const char *buf, int len, int timeout)
+int write_to_client(Connect *req, const char *buf, int len)
 {
-    int write_bytes = 0, ret;
-
-    while (len > 0)
+    int ret = send(req->clientSocket, buf, len, 0);
+    if (ret == -1)
     {
-        ret = poll_out(req->clientSocket, timeout);
-        if (ret != POLLOUT)
-        {
-            print_err(req, "<%s:%d> Error poll()=0x%x\n", __func__, __LINE__, ret);
+        print_err(req, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
+        if (errno == EAGAIN)
+            return -EAGAIN;
+        else 
             return -1;
-        }
-
-        ret = send(req->clientSocket, buf, len, 0);
-        if (ret == -1)
-        {
-            print_err(req, "<%s:%d> Error send(): %s\n", __func__, __LINE__, strerror(errno));
-            if ((errno == EINTR) || (errno == EAGAIN))
-                continue;
-            return -1;
-        }
-
-        write_bytes += ret;
-        len -= ret;
-        buf += ret;
     }
-
-    return write_bytes;
+    else
+        return  ret;
 }
 //======================================================================
-int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *cont_len)
+int read_from_client(Connect *req, char *buf, int len)
 {
-    int rd, wr;
-
-    lseek(req->fd, offset, SEEK_SET);
-
-    for ( ; *cont_len > 0; )
+    int ret = recv(req->clientSocket, buf, len, 0);
+    if (ret == -1)
     {
-        if (*cont_len < size)
-            rd = read(req->fd, buf, *cont_len);
+        if (errno == EAGAIN)
+            return -EAGAIN;
         else
-            rd = read(req->fd, buf, size);
-
-        if (rd == -1)
         {
-            print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
-            if (errno == EINTR)
-                continue;
+            print_err(req, "<%s:%d> Error recv(): %s\n", __func__, __LINE__, strerror(errno));
             return -1;
         }
-        else if (rd == 0)
-            break;
-
-        wr = write_to_client(req, buf, rd, conf->Timeout);
-        if (wr <= 0)
-        {
-            print_err(req, "<%s:%d> Error write_to_sock(): %s\n", __func__, __LINE__, strerror(errno));
-            return -1;
-        }
-
-        *cont_len -= wr;
     }
-
-    return 0;
+    else
+        return  ret;
 }
 //======================================================================
 int find_empty_line(Connect *req)
@@ -259,10 +197,10 @@ int hd_read(Connect *req)
     int num_read = SIZE_BUF_REQUEST - req->req.len - 1;
     if (num_read <= 0)
         return -RS414;
-    int n = recv(req->clientSocket, req->req.buf + req->req.len, num_read, 0);
+    int n = read_from_client(req, req->req.buf + req->req.len, num_read);
     if (n < 0)
     {
-        if (errno == EAGAIN)
+        if (n == -EAGAIN)
             return -EAGAIN;
         return -1;
     }
@@ -281,3 +219,42 @@ int hd_read(Connect *req)
 
     return 0;
 }
+
+
+
+//======================================================================
+/*int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *cont_len)
+{
+    int rd, wr;
+
+    lseek(req->fd, offset, SEEK_SET);
+
+    for ( ; *cont_len > 0; )
+    {
+        if (*cont_len < size)
+            rd = read(req->fd, buf, *cont_len);
+        else
+            rd = read(req->fd, buf, size);
+
+        if (rd == -1)
+        {
+            print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        else if (rd == 0)
+            break;
+
+        wr = write_to_client(req, buf, rd, conf->Timeout);
+        if (wr <= 0)
+        {
+            print_err(req, "<%s:%d> Error write_to_sock(): %s\n", __func__, __LINE__, strerror(errno));
+            return -1;
+        }
+
+        *cont_len -= wr;
+    }
+
+    return 0;
+}*/

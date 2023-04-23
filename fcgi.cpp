@@ -641,47 +641,6 @@ int fcgi_read_header(Connect* r)
     return r->fcgi.len_header;
 }
 //======================================================================
-int get_sock_fcgi(Connect *req, const char *script)
-{
-    int fcgi_sock = -1, len;
-    fcgi_list_addr *ps = conf->fcgi_list;
-
-    if (!script)
-    {
-        print_err(req, "<%s:%d> Not found\n", __func__, __LINE__);
-        return -RS404;
-    }
-
-    len = strlen(script);
-    if (len > 64)
-    {
-        print_err(req, "<%s:%d> Error len name script\n", __func__, __LINE__);
-        return -RS400;
-    }
-
-    for (; ps; ps = ps->next)
-    {
-        if (!strcmp(script, ps->script_name.c_str()))
-            break;
-    }
-
-    if (ps != NULL)
-    {
-        fcgi_sock = create_fcgi_socket(ps->addr.c_str());
-        if (fcgi_sock < 0)
-        {
-            fcgi_sock = -RS502;
-        }
-    }
-    else
-    {
-        print_err(req, "<%s:%d> Not found: %s\n", __func__, __LINE__, script);
-        fcgi_sock = -RS404;
-    }
-
-    return fcgi_sock;
-}
-//======================================================================
 void fcgi_set_poll_list(Connect *r, int *i)
 {
     if (r->cgi->dir == FROM_CLIENT)
@@ -837,15 +796,14 @@ void fcgi_worker(Connect* r)
                         r->cgi->dir = FROM_CGI;
                         break;
                     case FCGI_END_REQUEST:
-                    case FCGI_ABORT_REQUEST:
                         r->cgi->op.fcgi = FASTCGI_CLOSE;
-                        if (r->fcgi.len_header < r->fcgi.dataLen)
+                        r->sock_timer = 0;
+                        if (r->fcgi.dataLen > 0)
                         {
-                             r->fcgi.dataLen -= r->fcgi.len_header;
-                             r->fcgi.len_header = 0;
-                             r->cgi->dir = FROM_CGI;
+                            r->cgi->dir = FROM_CGI;
+                            r->timeout = conf->TimeoutCGI;
                         }
-                        else // (r->fcgi.len_buf == r->fcgi.dataLen)
+                        else
                         {
                             if (r->mode_send == NO_CHUNK)
                             {

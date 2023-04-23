@@ -167,6 +167,47 @@ int create_fcgi_socket(const char *host)
     return sockfd;
 }
 //======================================================================
+int get_sock_fcgi(Connect *req, const char *script)
+{
+    int fcgi_sock = -1, len;
+    fcgi_list_addr *ps = conf->fcgi_list;
+
+    if (!script)
+    {
+        print_err(req, "<%s:%d> Not found\n", __func__, __LINE__);
+        return -RS404;
+    }
+
+    len = strlen(script);
+    if (len > 64)
+    {
+        print_err(req, "<%s:%d> Error len name script\n", __func__, __LINE__);
+        return -RS400;
+    }
+
+    for (; ps; ps = ps->next)
+    {
+        if (!strcmp(script, ps->script_name.c_str()))
+            break;
+    }
+
+    if (ps != NULL)
+    {
+        fcgi_sock = create_fcgi_socket(ps->addr.c_str());
+        if (fcgi_sock < 0)
+        {
+            fcgi_sock = -RS502;
+        }
+    }
+    else
+    {
+        print_err(req, "<%s:%d> Not found: %s\n", __func__, __LINE__, script);
+        fcgi_sock = -RS404;
+    }
+
+    return fcgi_sock;
+}
+//======================================================================
 int get_sock_buf(int domain, int optname, int type, int protocol)
 {
     int sock = socket(domain, type, protocol);

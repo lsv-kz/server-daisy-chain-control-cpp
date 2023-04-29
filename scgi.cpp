@@ -324,11 +324,14 @@ void scgi_worker(Connect* r)
     if (r->cgi->op.scgi == SCGI_PARAMS)
     {
         int ret = write_to_fcgi(r);
-        if (ret == -1)
+        if (ret < 0)
         {
-            r->err = -RS502;
-            cgi_del_from_list(r);
-            end_response(r);
+            if (ret != -EAGAIN)
+            {
+                r->err = -RS502;
+                cgi_del_from_list(r);
+                end_response(r);
+            }
         }
         
         if (r->cgi->len_buf == 0)
@@ -364,31 +367,37 @@ void scgi_worker(Connect* r)
                 r->timeout = conf->TimeoutCGI;
             }
         }
+        else
+            r->sock_timer = 0;
     }
     else if (r->cgi->op.scgi == SCGI_STDIN)
     {
         int n = cgi_stdin(r);
         if (n < 0)
         {
-            print_err(r, "<%s:%d> Error cgi_stdin\n", __func__, __LINE__);
-            r->err = -1;
-            cgi_del_from_list(r);
-            end_response(r);
+            if (n != -EAGAIN)
+            {
+                r->err = -RS502;
+                cgi_del_from_list(r);
+                end_response(r);
+            }
         }
+        else
+            r->sock_timer = 0;
     }
     else //==================== SCGI_STDOUT=============================
     {
         if (r->cgi->op.scgi == SCGI_READ_HTTP_HEADERS)
         {
             int ret = cgi_read_hdrs(r);
-            if (ret == -EAGAIN)
-                return;
             if (ret < 0)
             {
-                print_err(r, "<%s:%d> Error Error cgi_read_hdrs()=%d\n", __func__, __LINE__, ret);
-                r->err = -RS502;
-                cgi_del_from_list(r);
-                end_response(r);
+                if (ret != -EAGAIN)
+                {
+                    r->err = -RS502;
+                    cgi_del_from_list(r);
+                    end_response(r);
+                }
             }
             else if (ret > 0)
             {
@@ -406,6 +415,7 @@ void scgi_worker(Connect* r)
                     r->resp_headers.len = r->resp_headers.s.size();
                     r->cgi->op.scgi = SCGI_SEND_HTTP_HEADERS;
                     r->cgi->dir = TO_CLIENT;
+                    r->sock_timer = 0;
                 }
             }
             else // ret == 0
@@ -418,9 +428,7 @@ void scgi_worker(Connect* r)
                 int wr = write_to_client(r, r->resp_headers.p, r->resp_headers.len);
                 if (wr < 0)
                 {
-                    if (wr == -EAGAIN)
-                        return;
-                    else
+                    if (wr != -EAGAIN)
                     {
                         r->err = -1;
                         r->req_hd.iReferer = MAX_HEADERS - 1;
@@ -435,12 +443,12 @@ void scgi_worker(Connect* r)
                     r->resp_headers.len -= wr;
                     if (r->resp_headers.len == 0)
                     {
-                        if (r->reqMethod == M_HEAD)
+                        /*if (r->reqMethod == M_HEAD)
                         {
                             cgi_del_from_list(r);
                             end_response(r);
                         }
-                        else
+                        else*/
                         {
                             r->cgi->op.scgi = SCGI_READ_ENTITY;
                             r->sock_timer = 0;
@@ -490,27 +498,27 @@ void scgi_worker(Connect* r)
         else if (r->cgi->op.scgi == SCGI_READ_ENTITY)
         {
             int ret = cgi_stdout(r);
-            if (ret == -EAGAIN)
-                return;
-            else if (ret < 0)
+            if (ret < 0)
             {
-                r->err = -1;
-                cgi_del_from_list(r);
-                end_response(r);
+                if (ret != -EAGAIN)
+                {
+                    r->err = -1;
+                    cgi_del_from_list(r);
+                    end_response(r);
+                }
             }
             else if (ret == 0) // end SCGI_SEND_ENTITY
             {
                 cgi_del_from_list(r);
                 end_response(r);
             }
+            else
+                r->sock_timer = 0;
         }
         else
         {
             print_err(r, "<%s:%d> ??? Error: SCGI_OPERATION=%s\n", __func__, __LINE__, get_scgi_operation(r->cgi->op.scgi));
-            if (r->cgi->op.scgi <= SCGI_READ_HTTP_HEADERS)
-                r->err = -RS502;
-            else
-                r->err = -1;
+            r->err = -1;
             cgi_del_from_list(r);
             end_response(r);
         }

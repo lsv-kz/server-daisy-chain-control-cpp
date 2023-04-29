@@ -208,7 +208,7 @@ int get_sock_fcgi(Connect *req, const char *script)
     return fcgi_sock;
 }
 //======================================================================
-int get_sock_buf(int domain, int optname, int type, int protocol)
+int get_size_sock_buf(int domain, int optname, int type, int protocol)
 {
     int sock = socket(domain, type, protocol);
     if (sock < 0)

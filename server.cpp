@@ -7,7 +7,7 @@ int Connect::serverSocket;
 
 int read_conf_file(const char *path_conf);
 int create_server_socket(const Config *c);
-int get_sock_buf(int domain, int optname, int type, int protocol);
+int get_size_sock_buf(int domain, int optname, int type, int protocol);
 void free_fcgi_list();
 
 pid_t create_child(int, unsigned int, int *, int, char);
@@ -120,13 +120,13 @@ void print_limits()
         cout << " RLIMIT_NOFILE: cur=" << (long)lim.rlim_cur << ", max=" << (long)lim.rlim_max << "\n";
     cout << " hardware_concurrency(): " << thread::hardware_concurrency() << "\n\n";
 
-    int sndbuf = get_sock_buf(AF_INET, SO_SNDBUF, SOCK_STREAM, 0);
+    int sndbuf = get_size_sock_buf(AF_INET, SO_SNDBUF, SOCK_STREAM, 0);
     if (sndbuf < 0)
         cerr << " Error get_sock_buf(AF_INET, SO_SNDBUF, SOCK_STREAM, 0): " << strerror(-sndbuf) << "\n";
     else
         cout << " AF_INET: SO_SNDBUF=" << sndbuf << "\n";
 
-    sndbuf = get_sock_buf(AF_INET, SO_RCVBUF, SOCK_STREAM, 0);
+    sndbuf = get_size_sock_buf(AF_INET, SO_RCVBUF, SOCK_STREAM, 0);
     if (sndbuf < 0)
         cerr << " Error get_sock_buf(AF_INET, SO_RCVBUF, SOCK_STREAM, 0): " << strerror(-sndbuf) << "\n\n";
     else

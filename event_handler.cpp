@@ -37,7 +37,7 @@ int send_html(Connect *r);
 int create_multipart_head(Connect *req);
 void set_part(Connect *r);
 int send_headers(Connect *r);
-static int num_poll;
+static int num_poll, num_work;
 
 static void worker(Connect *r, RequestManager *ReqMan);
 //======================================================================
@@ -178,7 +178,7 @@ mtx_.unlock();
 //======================================================================
 static int set_poll()
 {
-    num_poll = 0;
+    num_work = num_poll = 0;
     time_t t = time(NULL);
     Connect *r = work_list_start, *next = NULL;
     for ( ; r; r = next)
@@ -189,7 +189,10 @@ static int set_poll()
                 r->sock_timer = t;
 
         if (r->io_status == WORK)
+        {
+            ++num_work;
             continue;
+        }
 
         if (((t - r->sock_timer) >= r->timeout) && (r->sock_timer != 0))
         {
@@ -219,54 +222,57 @@ static int set_poll()
     return num_poll;
 }
 //======================================================================
-static void worker(RequestManager *ReqMan)
+static int worker(int num_chld, RequestManager *ReqMan)
 {
+    int ret = 0;
+    if (num_poll >= 1)
+    {
+        int time_poll = conf->TimeoutPoll;
+        if (num_work >= 1)
+            time_poll = 0;
+
+        ret = poll(poll_fd, num_poll, time_poll);
+        if (ret == -1)
+        {
+            print_err("[%d]<%s:%d> Error poll(): %s\n", num_chld, __func__, __LINE__, strerror(errno));
+            return -1;
+        }
+        else if (ret == 0)
+        {
+            if (num_work == 0)
+                return 0;
+        }
+    }
+    else
+    {
+        if (num_work == 0)
+            return 0;
+    }
+
+    int i = 0;
     Connect *r = work_list_start, *next;
     for ( ; r; r = next)
     {
         next = r->next;
-        if (r->io_status == POLL)
-            continue;
-        worker(r, ReqMan);
-    }
-}
-//======================================================================
-static int poll_(int num_chld, RequestManager *ReqMan)
-{
-    if (num_poll <= 0)
-        return 0;
-    int ret = poll(poll_fd, num_poll, conf->TimeoutPoll);
-    if (ret == -1)
-    {
-        print_err("[%d]<%s:%d> Error poll(): %s\n", num_chld, __func__, __LINE__, strerror(errno));
-        return -1;
-    }
-    else if (ret == 0)
-        return 0;
 
-    int i = 0;
-    Connect *r = work_list_start, *next;
-    for ( ; (i < num_poll) && (ret > 0) && r; r = next)
-    {
-        next = r->next;
         if (r->io_status == WORK)
+        {
+            worker(r, ReqMan);
             continue;
+        }
 
         if (poll_fd[i].revents == POLLOUT)
         {
-            --ret;
             r->io_status = WORK;
             worker(r, ReqMan);
         }
         else if (poll_fd[i].revents & POLLIN)
         {
-            --ret;
             r->io_status = WORK;
             worker(r, ReqMan);
         }
         else if (poll_fd[i].revents)
         {
-            --ret;
             print_err(r, "<%s:%d> Error: events=0x%x(0x%x)\n", __func__, __LINE__, poll_fd[i].events, poll_fd[i].revents);
             del_from_list(r);
             if (r->operation > READ_REQUEST)
@@ -328,9 +334,8 @@ void event_handler(RequestManager *ReqMan)
         }
 
         add_work_list();
-        worker(ReqMan);
         set_poll();
-        if (poll_(num_chld, ReqMan) < 0)
+        if (worker(num_chld, ReqMan) < 0)
             break;
     }
 

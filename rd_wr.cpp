@@ -215,46 +215,7 @@ int hd_read(Connect *req)
     if (n == 1) // empty line found
         return req->req.len;
     else if (n < 0) // error
-        return n;
+        return -1;
 
     return 0;
 }
-
-
-
-//======================================================================
-/*int send_largefile(Connect *req, char *buf, int size, off_t offset, long long *cont_len)
-{
-    int rd, wr;
-
-    lseek(req->fd, offset, SEEK_SET);
-
-    for ( ; *cont_len > 0; )
-    {
-        if (*cont_len < size)
-            rd = read(req->fd, buf, *cont_len);
-        else
-            rd = read(req->fd, buf, size);
-
-        if (rd == -1)
-        {
-            print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
-            if (errno == EINTR)
-                continue;
-            return -1;
-        }
-        else if (rd == 0)
-            break;
-
-        wr = write_to_client(req, buf, rd, conf->Timeout);
-        if (wr <= 0)
-        {
-            print_err(req, "<%s:%d> Error write_to_sock(): %s\n", __func__, __LINE__, strerror(errno));
-            return -1;
-        }
-
-        *cont_len -= wr;
-    }
-
-    return 0;
-}*/

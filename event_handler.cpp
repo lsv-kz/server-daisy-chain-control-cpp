@@ -31,14 +31,14 @@ static mutex mtx_;
 static condition_variable cond_;
 
 static int close_thr = 0;
+static int num_poll, num_work;
 static int size_buf;
 static char *snd_buf;
+
 int send_html(Connect *r);
 int create_multipart_head(Connect *req);
 void set_part(Connect *r);
 int send_headers(Connect *r);
-static int num_poll, num_work;
-
 static void worker(Connect *r, RequestManager *ReqMan);
 //======================================================================
 int send_part_file(Connect *req)
@@ -345,7 +345,6 @@ void event_handler(RequestManager *ReqMan)
 #endif
         if (snd_buf)
             delete [] snd_buf;
-    //print_err("*** Exit [%s:proc=%d] ***\n", __func__, num_chld);
 }
 //======================================================================
 void add_wait_list(Connect *r)
@@ -450,11 +449,8 @@ int send_headers(Connect *r)
             return -EAGAIN;
         else
         {
-            r->err = -1;
             r->req_hd.iReferer = MAX_HEADERS - 1;
             r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
-            del_from_list(r);
-            end_response(r);
             return -1;
         }
     }
@@ -508,9 +504,16 @@ static void worker(Connect *r, RequestManager *ReqMan)
                     }
                     r->sock_timer = 0;
                 }
-                else if (wr == -EAGAIN)
+                else if (wr < 0)
                 {
-                    r->io_status = POLL;
+                    if (wr == -EAGAIN)
+                        r->io_status = POLL;
+                    else
+                    {
+                        r->err = -1;
+                        del_from_list(r);
+                        end_response(r);
+                    }
                 }
             }
             else if (r->mp.status == SEND_PART)
@@ -560,9 +563,16 @@ static void worker(Connect *r, RequestManager *ReqMan)
                     else
                         r->sock_timer = 0;
                 }
-                else if (wr == -EAGAIN)
+                else if (wr < 0)
                 {
-                    r->io_status = POLL;
+                    if (wr == -EAGAIN)
+                        r->io_status = POLL;
+                    else
+                    {
+                        r->err = -1;
+                        del_from_list(r);
+                        end_response(r);
+                    }
                 }
             }
         }
@@ -602,6 +612,7 @@ static void worker(Connect *r, RequestManager *ReqMan)
                 }
                 else
                 {
+                    r->sock_timer = 0;
                     if (r->source_entity == FROM_DATA_BUFFER)
                     {
                         if (r->html.len == 0)
@@ -612,20 +623,17 @@ static void worker(Connect *r, RequestManager *ReqMan)
                         else
                         {
                             r->operation = SEND_ENTITY;
-                            r->sock_timer = 0;
                         }
                     }
                     else if (r->source_entity == FROM_FILE)
                     {
                         r->operation = SEND_ENTITY;
-                        r->sock_timer = 0;
                     }
                     else if (r->source_entity == MULTIPART_ENTITY)
                     {
                         if ((r->mp.rg = r->rg.get()))
                         {
                             r->operation = SEND_ENTITY;
-                            r->sock_timer = 0;
                             set_part(r);
                         }
                         else
@@ -638,22 +646,31 @@ static void worker(Connect *r, RequestManager *ReqMan)
                 }
             }
         }
-        else if (wr == -EAGAIN)
+        else if (wr < 0)
         {
-            r->io_status = POLL;
+            if (wr == -EAGAIN)
+                r->io_status = POLL;
+            else
+            {
+                r->err = -1;
+                del_from_list(r);
+                end_response(r);
+            }
         }
     }
     else if (r->operation == READ_REQUEST)
     {
         int rd = hd_read(r);
-        if (rd == -EAGAIN)
+        if (rd < 0)
         {
-            r->io_status = POLL;
-        }
-        else if (rd < 0)
-        {
-            del_from_list(r);
-            end_response(r);
+            if (rd == -EAGAIN)
+                r->io_status = POLL;
+            else
+            {
+                r->err = -1;
+                del_from_list(r);
+                end_response(r);
+            }
         }
         else if (rd > 0)
         {

@@ -332,6 +332,8 @@ void scgi_worker(Connect* r)
                 cgi_del_from_list(r);
                 end_response(r);
             }
+
+            return;
         }
         
         if (r->cgi->len_buf == 0)
@@ -367,23 +369,19 @@ void scgi_worker(Connect* r)
                 r->timeout = conf->TimeoutCGI;
             }
         }
-        else
-            r->sock_timer = 0;
     }
     else if (r->cgi->op.scgi == SCGI_STDIN)
     {
-        int n = cgi_stdin(r);
-        if (n < 0)
+        int ret = cgi_stdin(r);
+        if (ret < 0)
         {
-            if (n != -EAGAIN)
+            if (ret != -EAGAIN)
             {
-                r->err = -RS502;
+                r->err = -1;
                 cgi_del_from_list(r);
                 end_response(r);
             }
         }
-        else
-            r->sock_timer = 0;
     }
     else //==================== SCGI_STDOUT=============================
     {
@@ -415,7 +413,6 @@ void scgi_worker(Connect* r)
                     r->resp_headers.len = r->resp_headers.s.size();
                     r->cgi->op.scgi = SCGI_SEND_HTTP_HEADERS;
                     r->cgi->dir = TO_CLIENT;
-                    r->sock_timer = 0;
                 }
             }
             else // ret == 0
@@ -425,10 +422,11 @@ void scgi_worker(Connect* r)
         {
             if (r->resp_headers.len > 0)
             {
-                int wr = write_to_client(r, r->resp_headers.p, r->resp_headers.len);
-                if (wr < 0)
+                int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
+                if (wr == -1)
                 {
-                    if (wr != -EAGAIN)
+                    print_err(r, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
+                    if (errno != EAGAIN)
                     {
                         r->err = -1;
                         r->req_hd.iReferer = MAX_HEADERS - 1;
@@ -447,6 +445,7 @@ void scgi_worker(Connect* r)
                         {
                             cgi_del_from_list(r);
                             end_response(r);
+                            return 0;
                         }
                         else*/
                         {
@@ -458,6 +457,8 @@ void scgi_worker(Connect* r)
                                 r->cgi->len_buf = r->lenTail;
                                 r->tail = NULL;
                                 r->lenTail = 0;
+                                r->cgi->dir = TO_CLIENT;
+                                r->timeout = conf->Timeout;
                                 if (r->mode_send == CHUNK)
                                 {
                                     if (cgi_set_size_chunk(r))
@@ -465,12 +466,8 @@ void scgi_worker(Connect* r)
                                         r->err = -1;
                                         cgi_del_from_list(r);
                                         end_response(r);
-                                        return;
                                     }
                                 }
-
-                                r->cgi->dir = TO_CLIENT;
-                                r->timeout = conf->Timeout;
                             }
                             else
                             {
@@ -512,8 +509,6 @@ void scgi_worker(Connect* r)
                 cgi_del_from_list(r);
                 end_response(r);
             }
-            else
-                r->sock_timer = 0;
         }
         else
         {
@@ -523,7 +518,6 @@ void scgi_worker(Connect* r)
             end_response(r);
         }
     }
-    
 }
 //======================================================================
 int timeout_scgi(Connect *r)

@@ -296,6 +296,7 @@ public:
 
     struct
     {
+        bool http_headers_received;
         FCGI_STATUS status;
         int fd;
 
@@ -306,8 +307,11 @@ public:
         unsigned char fcgi_type;
         int dataLen;
         int paddingLen;
-        char buf[8];
-        int len_header;
+        char *ptr_wr;
+        char *ptr_rd;
+        char buf[2048];
+        int size_buf = 2047;
+        int len_buf;
     } fcgi;
 
     Ranges rg;
@@ -411,7 +415,6 @@ int parse_startline_request(Connect *req, char *s);
 int parse_headers(Connect *req, char *s, int n);
 
 const char *get_str_operation(OPERATION_TYPE n);
-const char *get_io_status(IO_STATUS n);
 const char *get_cgi_operation(CGI_OPERATION n);
 const char *get_fcgi_operation(FCGI_OPERATION n);
 const char *get_fcgi_status(FCGI_STATUS n);

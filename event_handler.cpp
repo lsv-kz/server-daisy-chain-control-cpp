@@ -60,19 +60,19 @@ int send_part_file(Connect *req)
         if (wr == -1)
         {
             if (errno == EAGAIN)
-                return -EAGAIN;
+                return ERR_TRY_AGAIN;
             print_err(req, "<%s:%d> Error sendfile(): %s\n", __func__, __LINE__, strerror(errno));
             return wr;
         }
     #elif defined(FREEBSD_)
         off_t wr_bytes;
-        int ret = sendfile(req->fd, req->clientSocket, req->offset, len, NULL, &wr_bytes, 0);// SF_NODISKIO SF_NOCACHE
+        int ret = sendfile(req->fd, req->clientSocket, req->offset, len, NULL, &wr_bytes, 0);
         if (ret == -1)
         {
             if (errno == EAGAIN)
             {
                 if (wr_bytes == 0)
-                    return -EAGAIN;
+                    return ERR_TRY_AGAIN;
                 req->offset += wr_bytes;
                 wr = wr_bytes;
             }
@@ -113,10 +113,10 @@ int send_part_file(Connect *req)
         wr = write_to_client(req, snd_buf, rd);
         if (wr < 0)
         {
-            if (wr == -EAGAIN)
+            if (wr == ERR_TRY_AGAIN)
             {
                 lseek(req->fd, -rd, SEEK_CUR);
-                return -EAGAIN;
+                return ERR_TRY_AGAIN;
             }
 
             return wr;
@@ -186,7 +186,7 @@ static int set_poll()
         next = r->next;
 
         if (r->sock_timer == 0)
-                r->sock_timer = t;
+            r->sock_timer = t;
 
         if (r->io_status == WORK)
         {
@@ -194,7 +194,7 @@ static int set_poll()
             continue;
         }
 
-        if (((t - r->sock_timer) >= r->timeout) && (r->sock_timer != 0))
+        if ((t - r->sock_timer) >= r->timeout)
         {
             print_err(r, "<%s:%d> operation=%s, Timeout=%ld\n", __func__, __LINE__, get_str_operation(r->operation), t - r->sock_timer);
             del_from_list(r);
@@ -225,10 +225,10 @@ static int set_poll()
 static int worker(int num_chld, RequestManager *ReqMan)
 {
     int ret = 0;
-    if (num_poll >= 1)
+    if (num_poll > 0)
     {
         int time_poll = conf->TimeoutPoll;
-        if (num_work >= 1)
+        if (num_work > 0)
             time_poll = 0;
 
         ret = poll(poll_fd, num_poll, time_poll);
@@ -249,30 +249,34 @@ static int worker(int num_chld, RequestManager *ReqMan)
             return 0;
     }
 
-    int i = 0;
+    int i = 0, all = ret + num_work;
     Connect *r = work_list_start, *next;
-    for ( ; r; r = next)
+    for ( ; (all > 0) && r; r = next)
     {
         next = r->next;
 
         if (r->io_status == WORK)
         {
+            --all;
             worker(r, ReqMan);
             continue;
         }
 
         if (poll_fd[i].revents == POLLOUT)
         {
+            --all;
             r->io_status = WORK;
             worker(r, ReqMan);
         }
         else if (poll_fd[i].revents & POLLIN)
         {
+            --all;
             r->io_status = WORK;
             worker(r, ReqMan);
         }
         else if (poll_fd[i].revents)
         {
+            --all;
             print_err(r, "<%s:%d> Error: events=0x%x(0x%x)\n", __func__, __LINE__, poll_fd[i].events, poll_fd[i].revents);
             del_from_list(r);
             if (r->operation > READ_REQUEST)
@@ -414,8 +418,8 @@ int send_html(Connect *r)
     int ret = write_to_client(r, r->html.p, r->html.len);
     if (ret < 0)
     {
-        if (ret == -EAGAIN)
-            return -EAGAIN;
+        if (ret == ERR_TRY_AGAIN)
+            return ERR_TRY_AGAIN;
         return -1;
     }
 
@@ -445,14 +449,10 @@ int send_headers(Connect *r)
     int wr = write_to_client(r, r->resp_headers.p, r->resp_headers.len);
     if (wr < 0)
     {
-        if (wr == -EAGAIN)
-            return -EAGAIN;
+        if (wr == ERR_TRY_AGAIN)
+            return ERR_TRY_AGAIN;
         else
-        {
-            r->req_hd.iReferer = MAX_HEADERS - 1;
-            r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
             return -1;
-        }
     }
     else if (wr > 0)
     {
@@ -475,7 +475,7 @@ static void worker(Connect *r, RequestManager *ReqMan)
                 del_from_list(r);
                 end_response(r);
             }
-            else if (wr == -EAGAIN)
+            else if (wr == ERR_TRY_AGAIN)
             {
                 r->io_status = POLL;
             }
@@ -506,11 +506,13 @@ static void worker(Connect *r, RequestManager *ReqMan)
                 }
                 else if (wr < 0)
                 {
-                    if (wr == -EAGAIN)
+                    if (wr == ERR_TRY_AGAIN)
                         r->io_status = POLL;
                     else
                     {
                         r->err = -1;
+                        r->req_hd.iReferer = MAX_HEADERS - 1;
+                        r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
                         del_from_list(r);
                         end_response(r);
                     }
@@ -536,7 +538,7 @@ static void worker(Connect *r, RequestManager *ReqMan)
                         r->resp_headers.p = r->mp.hdr.c_str();
                     }
                 }
-                else if (wr == -EAGAIN)
+                else if (wr == ERR_TRY_AGAIN)
                 {
                     r->io_status = POLL;
                 }
@@ -565,11 +567,13 @@ static void worker(Connect *r, RequestManager *ReqMan)
                 }
                 else if (wr < 0)
                 {
-                    if (wr == -EAGAIN)
+                    if (wr == ERR_TRY_AGAIN)
                         r->io_status = POLL;
                     else
                     {
                         r->err = -1;
+                        r->req_hd.iReferer = MAX_HEADERS - 1;
+                        r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
                         del_from_list(r);
                         end_response(r);
                     }
@@ -584,7 +588,7 @@ static void worker(Connect *r, RequestManager *ReqMan)
                 del_from_list(r);
                 end_response(r);
             }
-            else if (wr == -EAGAIN)
+            else if (wr == ERR_TRY_AGAIN)
             {
                 r->io_status = POLL;
             }
@@ -648,11 +652,13 @@ static void worker(Connect *r, RequestManager *ReqMan)
         }
         else if (wr < 0)
         {
-            if (wr == -EAGAIN)
+            if (wr == ERR_TRY_AGAIN)
                 r->io_status = POLL;
             else
             {
                 r->err = -1;
+                r->req_hd.iReferer = MAX_HEADERS - 1;
+                r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
                 del_from_list(r);
                 end_response(r);
             }
@@ -663,7 +669,7 @@ static void worker(Connect *r, RequestManager *ReqMan)
         int rd = hd_read(r);
         if (rd < 0)
         {
-            if (rd == -EAGAIN)
+            if (rd == ERR_TRY_AGAIN)
                 r->io_status = POLL;
             else
             {

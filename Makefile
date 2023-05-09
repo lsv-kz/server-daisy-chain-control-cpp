@@ -11,14 +11,13 @@ OBJS = $(OBJSDIR)/server.o \
 	$(OBJSDIR)/scgi.o \
 	$(OBJSDIR)/fcgi.o \
 	$(OBJSDIR)/classes.o \
-	$(OBJSDIR)/send_headers.o \
+	$(OBJSDIR)/create_headers.o \
 	$(OBJSDIR)/config.o \
 	$(OBJSDIR)/threads_manager.o \
 	$(OBJSDIR)/response.o \
 	$(OBJSDIR)/event_handler.o \
 	$(OBJSDIR)/create_socket.o \
 	$(OBJSDIR)/percent_coding.o \
-	$(OBJSDIR)/rd_wr.o \
 	$(OBJSDIR)/functions.o \
 	$(OBJSDIR)/log.o \
 	$(OBJSDIR)/index.o \
@@ -41,8 +40,8 @@ $(OBJSDIR)/scgi.o: scgi.cpp main.h string__.h
 $(OBJSDIR)/classes.o: classes.cpp main.h ranges.h string__.h
 	$(CC) $(CFLAGS) -c classes.cpp -o $@
 
-$(OBJSDIR)/send_headers.o: send_headers.cpp main.h string__.h
-	$(CC) $(CFLAGS) -c send_headers.cpp -o $@
+$(OBJSDIR)/create_headers.o: create_headers.cpp main.h string__.h
+	$(CC) $(CFLAGS) -c create_headers.cpp -o $@
 
 $(OBJSDIR)/config.o: config.cpp main.h string__.h
 	$(CC) $(CFLAGS) -c config.cpp -o $@
@@ -61,9 +60,6 @@ $(OBJSDIR)/create_socket.o: create_socket.cpp main.h string__.h
 
 $(OBJSDIR)/percent_coding.o: percent_coding.cpp main.h
 	$(CC) $(CFLAGS) -c percent_coding.cpp -o $@
-
-$(OBJSDIR)/rd_wr.o: rd_wr.cpp main.h
-	$(CC) $(CFLAGS) -c rd_wr.cpp -o $@
 
 $(OBJSDIR)/functions.o: functions.cpp main.h string__.h
 	$(CC) $(CFLAGS) -c functions.cpp -o $@

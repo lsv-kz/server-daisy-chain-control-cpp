@@ -9,7 +9,7 @@ void cgi_del_from_list(Connect *r);
 int scgi_set_param(Connect *r);
 int cgi_set_size_chunk(Connect *r);
 int write_to_fcgi(Connect* r);
-int cgi_read_hdrs(Connect *req);
+int cgi_read_http_headers(Connect *req);
 int cgi_stdin(Connect *req);
 int cgi_stdout(Connect *req);
 //======================================================================
@@ -221,7 +221,6 @@ int scgi_create_connect(Connect *req)
     req->cgi->op.scgi = SCGI_PARAMS;
     req->cgi->dir = TO_CGI;
     req->cgi->len_buf = 0;
-    req->timeout = conf->TimeoutCGI;
     req->sock_timer = 0;
     
     int ret = scgi_set_param(req);
@@ -232,32 +231,6 @@ int scgi_create_connect(Connect *req)
     }
 
     return 0;
-}
-//======================================================================
-void scgi_set_poll_list(Connect *r, int *i)
-{
-    if (r->cgi->dir == FROM_CLIENT)
-    {
-        cgi_poll_fd[*i].fd = r->clientSocket;
-        cgi_poll_fd[*i].events = POLLIN;
-    }
-    else if (r->cgi->dir == TO_CGI)
-    {
-        cgi_poll_fd[*i].fd = r->fcgi.fd;
-        cgi_poll_fd[*i].events = POLLOUT;
-    }
-    else if (r->cgi->dir == FROM_CGI)
-    {
-        cgi_poll_fd[*i].fd = r->fcgi.fd;
-        cgi_poll_fd[*i].events = POLLIN;
-    }
-    else if (r->cgi->dir == TO_CLIENT)
-    {
-        cgi_poll_fd[*i].fd = r->clientSocket;
-        cgi_poll_fd[*i].events = POLLOUT;
-    }
-    
-    (*i)++;
 }
 //======================================================================
 int scgi_set_param(Connect *r)
@@ -326,7 +299,7 @@ void scgi_worker(Connect* r)
         int ret = write_to_fcgi(r);
         if (ret < 0)
         {
-            if (ret != -EAGAIN)
+            if (ret != ERR_TRY_AGAIN)
             {
                 r->err = -RS502;
                 cgi_del_from_list(r);
@@ -335,10 +308,10 @@ void scgi_worker(Connect* r)
 
             return;
         }
-        
+
+        r->sock_timer = 0;
         if (r->cgi->len_buf == 0)
         {
-            r->sock_timer = 0;
             if (r->req_hd.reqContentLength > 0)
             {
                 r->cgi->len_post = r->req_hd.reqContentLength - r->lenTail;
@@ -346,16 +319,14 @@ void scgi_worker(Connect* r)
                 if (r->lenTail > 0)
                 {
                     r->cgi->dir = TO_CGI;
-                    r->timeout = conf->TimeoutCGI;
                     r->cgi->p = r->tail;
                     r->cgi->len_buf = r->lenTail;
                     r->tail = NULL;
                     r->lenTail = 0;
                 }
-                else // [r->lenTail == 0]
+                else
                 {
                     r->cgi->dir = FROM_CLIENT;
-                    r->timeout = conf->Timeout;
                 }
             }
             else
@@ -366,7 +337,6 @@ void scgi_worker(Connect* r)
                 r->lenTail = 0;
                 r->p_newline = r->cgi->p = r->cgi->buf + 8;
                 r->cgi->len_buf = 0;
-                r->timeout = conf->TimeoutCGI;
             }
         }
     }
@@ -375,22 +345,24 @@ void scgi_worker(Connect* r)
         int ret = cgi_stdin(r);
         if (ret < 0)
         {
-            if (ret != -EAGAIN)
+            if (ret != ERR_TRY_AGAIN)
             {
-                r->err = -1;
+                r->err = -RS502;
                 cgi_del_from_list(r);
                 end_response(r);
             }
         }
+        else
+            r->sock_timer = 0;
     }
     else //==================== SCGI_STDOUT=============================
     {
         if (r->cgi->op.scgi == SCGI_READ_HTTP_HEADERS)
         {
-            int ret = cgi_read_hdrs(r);
+            int ret = cgi_read_http_headers(r);
             if (ret < 0)
             {
-                if (ret != -EAGAIN)
+                if (ret != ERR_TRY_AGAIN)
                 {
                     r->err = -RS502;
                     cgi_del_from_list(r);
@@ -413,6 +385,7 @@ void scgi_worker(Connect* r)
                     r->resp_headers.len = r->resp_headers.s.size();
                     r->cgi->op.scgi = SCGI_SEND_HTTP_HEADERS;
                     r->cgi->dir = TO_CLIENT;
+                    r->sock_timer = 0;
                 }
             }
             else // ret == 0
@@ -422,11 +395,10 @@ void scgi_worker(Connect* r)
         {
             if (r->resp_headers.len > 0)
             {
-                int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
-                if (wr == -1)
+                int wr = write_to_client(r, r->resp_headers.p, r->resp_headers.len);
+                if (wr < 0)
                 {
-                    print_err(r, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
-                    if (errno != EAGAIN)
+                    if (wr != ERR_TRY_AGAIN)
                     {
                         r->err = -1;
                         r->req_hd.iReferer = MAX_HEADERS - 1;
@@ -445,11 +417,10 @@ void scgi_worker(Connect* r)
                         {
                             cgi_del_from_list(r);
                             end_response(r);
-                            return 0;
                         }
                         else*/
                         {
-                            r->cgi->op.scgi = SCGI_READ_ENTITY;
+                            r->cgi->op.scgi = SCGI_SEND_ENTITY;
                             r->sock_timer = 0;
                             if (r->lenTail > 0)
                             {
@@ -458,7 +429,6 @@ void scgi_worker(Connect* r)
                                 r->tail = NULL;
                                 r->lenTail = 0;
                                 r->cgi->dir = TO_CLIENT;
-                                r->timeout = conf->Timeout;
                                 if (r->mode_send == CHUNK)
                                 {
                                     if (cgi_set_size_chunk(r))
@@ -474,7 +444,6 @@ void scgi_worker(Connect* r)
                                 r->cgi->len_buf = 0;
                                 r->cgi->p = NULL;
                                 r->cgi->dir = FROM_CGI;
-                                r->timeout = conf->TimeoutCGI;
                             }
                         }
                     }
@@ -492,12 +461,12 @@ void scgi_worker(Connect* r)
                 end_response(r);
             }
         }
-        else if (r->cgi->op.scgi == SCGI_READ_ENTITY)
+        else if (r->cgi->op.scgi == SCGI_SEND_ENTITY)
         {
             int ret = cgi_stdout(r);
             if (ret < 0)
             {
-                if (ret != -EAGAIN)
+                if (ret != ERR_TRY_AGAIN)
                 {
                     r->err = -1;
                     cgi_del_from_list(r);
@@ -509,6 +478,8 @@ void scgi_worker(Connect* r)
                 cgi_del_from_list(r);
                 end_response(r);
             }
+            else
+                r->sock_timer = 0;
         }
         else
         {
@@ -522,7 +493,8 @@ void scgi_worker(Connect* r)
 //======================================================================
 int timeout_scgi(Connect *r)
 {
-    if ((r->cgi->op.scgi == SCGI_STDIN) && (r->cgi->dir == TO_CGI))
+    if (((r->cgi->op.scgi == SCGI_PARAMS) || (r->cgi->op.scgi == SCGI_STDIN)) && 
+         (r->cgi->dir == TO_CGI))
         return -RS504;
     else if (r->cgi->op.scgi == SCGI_READ_HTTP_HEADERS)
         return -RS504;

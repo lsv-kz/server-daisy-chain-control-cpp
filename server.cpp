@@ -530,3 +530,50 @@ pid_t create_child(int sock, unsigned int num_chld, int *pfd_i, int fd_close, ch
 
     return pid;
 }
+//======================================================================
+int read_from_pipe(int fd, char *buf, int len, int timeout)
+{
+    int read_bytes = 0, ret, tm;
+    struct pollfd fdrd;
+    char *p = buf;
+    
+    tm = (timeout == -1) ? -1 : (timeout * 1000);
+
+    fdrd.fd = fd;
+    fdrd.events = POLLIN;
+
+    while (len > 0)
+    {
+        ret = poll(&fdrd, 1, tm);
+        if (ret == -1)
+        {
+            if (errno == EINTR)
+                continue;
+            return ret;
+        }
+        else if (!ret)
+            return -RS408;
+
+        if (fdrd.revents & POLLIN)
+        {
+            ret = read(fd, p, len);
+            if (ret == -1)
+            {
+                print_err("<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
+                return -1;
+            }
+            else if (ret == 0)
+                break;
+
+            p += ret;
+            len -= ret;
+            read_bytes += ret;
+        }
+        else if (fdrd.revents & POLLHUP)
+            break;
+        else
+            return -1;
+    }
+
+    return read_bytes;
+}

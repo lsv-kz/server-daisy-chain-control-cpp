@@ -326,15 +326,11 @@ int fcgi_stdin(Connect *r)// return [ ERR_TRY_AGAIN | -1 | 0 ]
     if (r->cgi->dir == FROM_CLIENT)
     {
         int rd = (r->cgi->len_post > r->cgi->size_buf) ? r->cgi->size_buf : r->cgi->len_post;
-        r->cgi->len_buf = read(r->clientSocket, r->cgi->buf + 8, rd);
-        if (r->cgi->len_buf == -1)
+        r->cgi->len_buf = read_from_client(r, r->cgi->buf + 8, rd);
+        if (r->cgi->len_buf < 0)
         {
-            if (errno == EAGAIN)
-            {
-                r->io_status = POLL;
+            if (r->cgi->len_buf == ERR_TRY_AGAIN)
                 return ERR_TRY_AGAIN;
-            }
-            
             return -1;
         }
         else if (r->cgi->len_buf == 0)
@@ -372,10 +368,7 @@ int fcgi_stdin(Connect *r)// return [ ERR_TRY_AGAIN | -1 | 0 ]
         {
             print_err(r, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
             if (errno == EAGAIN)
-            {
-                r->io_status = POLL;
                 return ERR_TRY_AGAIN;
-            }
             return -1;
         }
 
@@ -389,7 +382,6 @@ int fcgi_stdin(Connect *r)// return [ ERR_TRY_AGAIN | -1 | 0 ]
                 {
                     r->cgi->op.fcgi = FASTCGI_READ_HTTP_HEADERS;
                     r->fcgi.status = FCGI_READ_HEADER;
-                    r->io_status = POLL;
                     r->fcgi.len_buf = 0;
                     r->fcgi.ptr_rd = r->fcgi.ptr_wr = r->fcgi.buf;
 
@@ -452,10 +444,7 @@ int fcgi_stdout(Connect *r)// return [ ERR_TRY_AGAIN | -1 | 0 | 1 | 0< ]
                     print_err(r, "<%s:%d> Error read from script(fd=%d): %s(%d)\n", 
                             __func__, __LINE__, r->fcgi.fd, strerror(errno), errno);
                     if (errno == EAGAIN)
-                    {
-                        r->io_status = POLL;
                         return ERR_TRY_AGAIN;
-                    }
                     else
                     {
                         r->err = -1;
@@ -517,15 +506,11 @@ int fcgi_stdout(Connect *r)// return [ ERR_TRY_AGAIN | -1 | 0 | 1 | 0< ]
     }
     else if (r->cgi->dir == TO_CLIENT)
     {
-        int ret = write(r->clientSocket, r->cgi->p, r->cgi->len_buf);
-        if (ret == -1)
+        int ret = write_to_client(r, r->cgi->p, r->cgi->len_buf);
+        if (ret < 0)
         {
-            print_err(r, "<%s:%d> Error send to client: %s\n", __func__, __LINE__, strerror(errno));
-            if (errno == EAGAIN)
-            {
-                r->io_status = POLL;
+            if (ret == ERR_TRY_AGAIN)
                 return ERR_TRY_AGAIN;
-            }
             else
             {
                 r->err = -1;
@@ -551,7 +536,6 @@ int fcgi_stdout(Connect *r)// return [ ERR_TRY_AGAIN | -1 | 0 | 1 | 0< ]
                     if (r->fcgi.len_buf <= 0)
                     {
                         r->fcgi.ptr_rd = r->fcgi.ptr_wr = r->fcgi.buf;
-                        r->io_status = POLL;
                     }
 
                     r->cgi->p = r->cgi->buf + 8;
@@ -594,10 +578,7 @@ int fcgi_read_http_headers(Connect *r)
         {
             print_err(r, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
             if (errno == EAGAIN)
-            {
-                r->io_status = POLL;
                 return ERR_TRY_AGAIN;
-            }
             else
             {
                 r->err = -RS502;
@@ -638,10 +619,7 @@ int write_to_fcgi(Connect* r)
     if (ret == -1)
     {
         if (errno == EAGAIN)
-        {
-            r->io_status = POLL;
             return ERR_TRY_AGAIN;
-        }
         else
         {
             print_err(r, "<%s:%d> Error write to fcgi: %s\n", __func__, __LINE__, strerror(errno));
@@ -666,17 +644,14 @@ int fcgi_read_header(Connect* r)
         r->fcgi.ptr_rd += 8;
         return 8;
     }
-    else 
+    else
     {
         int len = r->fcgi.size_buf - r->fcgi.len_buf;
         n = read(r->fcgi.fd, r->fcgi.ptr_wr, len);
         if (n == -1)
         {
             if (errno == EAGAIN)
-            {
-                r->io_status = POLL;
                 return ERR_TRY_AGAIN;
-            }
             print_err(r, "<%s:%d> Error fcgi_read_header(): %s\n", __func__, __LINE__, strerror(errno));
             return -1;
         }
@@ -746,7 +721,9 @@ void fcgi_worker(Connect* r)
         }
         else if (ret < 0)
         {
-            if (ret != ERR_TRY_AGAIN)
+            if (ret == ERR_TRY_AGAIN)
+                r->io_status = POLL;
+            else
             {
                 r->err = -RS502;
                 cgi_del_from_list(r);
@@ -795,7 +772,9 @@ void fcgi_worker(Connect* r)
         }
         else if (ret < 0)
         {
-            if (ret != ERR_TRY_AGAIN)
+            if (ret == ERR_TRY_AGAIN)
+                r->io_status = POLL;
+            else
             {
                 r->err = -RS502;
                 cgi_del_from_list(r);
@@ -808,7 +787,9 @@ void fcgi_worker(Connect* r)
         int ret = fcgi_stdin(r);
         if (ret < 0)
         {
-            if (ret != ERR_TRY_AGAIN)
+            if (ret == ERR_TRY_AGAIN)
+                r->io_status = POLL;
+            else
             {
                 r->err = -RS502;
                 cgi_del_from_list(r);
@@ -825,7 +806,9 @@ void fcgi_worker(Connect* r)
             int ret = fcgi_read_header(r);
             if (ret < 0)
             {
-                if (ret != ERR_TRY_AGAIN)
+                if (ret == ERR_TRY_AGAIN)
+                    r->io_status = POLL;
+                else
                 {
                     if (r->cgi->op.fcgi <= FASTCGI_READ_HTTP_HEADERS)
                         r->err = -RS502;
@@ -850,7 +833,6 @@ void fcgi_worker(Connect* r)
                             if (r->fcgi.len_buf <= 0)
                             {
                                 r->fcgi.ptr_rd = r->fcgi.ptr_wr = r->fcgi.buf;
-                                r->io_status = POLL;
                             }
 
                             r->cgi->p = r->cgi->buf + 8;
@@ -911,7 +893,9 @@ void fcgi_worker(Connect* r)
             int ret = read_padding(r);
             if (ret < 0)
             {
-                if (ret != ERR_TRY_AGAIN)
+                if (ret == ERR_TRY_AGAIN)
+                    r->io_status = POLL;
+                else
                 {
                     r->err = -1;
                     cgi_del_from_list(r);
@@ -926,7 +910,9 @@ void fcgi_worker(Connect* r)
             int ret = fcgi_read_http_headers(r);
             if (ret < 0)
             {
-                if (ret != ERR_TRY_AGAIN)
+                if (ret == ERR_TRY_AGAIN)
+                    r->io_status = POLL;
+                else
                 {
                     r->err = -RS502;
                     cgi_del_from_list(r);
@@ -964,7 +950,6 @@ void fcgi_worker(Connect* r)
                         if (r->fcgi.len_buf <= 0)
                         {
                             r->fcgi.ptr_rd = r->fcgi.ptr_wr = r->fcgi.buf;
-                            r->io_status = POLL;
                         }
 
                         r->cgi->p = r->cgi->buf + 8;
@@ -983,11 +968,12 @@ void fcgi_worker(Connect* r)
         {
             if (r->resp_headers.len > 0)
             {
-                int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
+                int wr = write_to_client(r, r->resp_headers.p, r->resp_headers.len);
                 if (wr < 0)
                 {
-                    print_err(r, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
-                    if (errno != EAGAIN)
+                    if (wr == ERR_TRY_AGAIN)
+                        r->io_status = POLL;
+                    else
                     {
                         r->err = -1;
                         r->req_hd.iReferer = MAX_HEADERS - 1;
@@ -1050,7 +1036,9 @@ void fcgi_worker(Connect* r)
             int ret = fcgi_stdout(r);
             if (ret < 0)
             {
-                if (ret != ERR_TRY_AGAIN)
+                if (ret == ERR_TRY_AGAIN)
+                    r->io_status = POLL;
+                else
                 {
                     r->err = -1;
                     cgi_del_from_list(r);
@@ -1105,7 +1093,6 @@ int read_padding(Connect *r)
                 if (r->fcgi.len_buf <= 0)
                 {
                     r->fcgi.ptr_rd = r->fcgi.ptr_wr = r->fcgi.buf;
-                    r->io_status = POLL;
                 }
                 r->cgi->p = r->cgi->buf + 8;
                 r->cgi->len_buf = 0;
@@ -1127,10 +1114,7 @@ int read_padding(Connect *r)
             print_err(r, "<%s:%d> Error read from script(fd=%d): %s\n", 
                     __func__, __LINE__, r->fcgi.fd, strerror(errno));
             if (errno == EAGAIN)
-            {
-                r->io_status = POLL;
                 return ERR_TRY_AGAIN;
-            }
             else
             {
                 r->err = -1;
@@ -1155,7 +1139,6 @@ int read_padding(Connect *r)
         if (r->fcgi.len_buf <= 0)
         {
             r->fcgi.ptr_rd = r->fcgi.ptr_wr = r->fcgi.buf;
-            r->io_status = POLL;
         }
         r->cgi->p = r->cgi->buf + 8;
         r->cgi->len_buf = 0;

@@ -299,7 +299,9 @@ void scgi_worker(Connect* r)
         int ret = write_to_fcgi(r);
         if (ret < 0)
         {
-            if (ret != ERR_TRY_AGAIN)
+            if (ret == ERR_TRY_AGAIN)
+                r->io_status = POLL;
+            else
             {
                 r->err = -RS502;
                 cgi_del_from_list(r);
@@ -345,7 +347,9 @@ void scgi_worker(Connect* r)
         int ret = cgi_stdin(r);
         if (ret < 0)
         {
-            if (ret != ERR_TRY_AGAIN)
+            if (ret == ERR_TRY_AGAIN)
+                r->io_status = POLL;
+            else
             {
                 r->err = -RS502;
                 cgi_del_from_list(r);
@@ -362,7 +366,9 @@ void scgi_worker(Connect* r)
             int ret = cgi_read_http_headers(r);
             if (ret < 0)
             {
-                if (ret != ERR_TRY_AGAIN)
+                if (ret == ERR_TRY_AGAIN)
+                    r->io_status = POLL;
+                else
                 {
                     r->err = -RS502;
                     cgi_del_from_list(r);
@@ -398,7 +404,9 @@ void scgi_worker(Connect* r)
                 int wr = write_to_client(r, r->resp_headers.p, r->resp_headers.len);
                 if (wr < 0)
                 {
-                    if (wr != ERR_TRY_AGAIN)
+                    if (wr == ERR_TRY_AGAIN)
+                        r->io_status = POLL;
+                    else
                     {
                         r->err = -1;
                         r->req_hd.iReferer = MAX_HEADERS - 1;
@@ -466,7 +474,9 @@ void scgi_worker(Connect* r)
             int ret = cgi_stdout(r);
             if (ret < 0)
             {
-                if (ret != ERR_TRY_AGAIN)
+                if (ret == ERR_TRY_AGAIN)
+                    r->io_status = POLL;
+                else
                 {
                     r->err = -1;
                     cgi_del_from_list(r);

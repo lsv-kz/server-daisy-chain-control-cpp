@@ -468,6 +468,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             ioctl(clientSocket, FIONBIO, &opt);
 
             req->init();
+            get_time(req->sTime);
             req->numProc = numProc;
             req->numConn = ++allConn;
             req->numReq = 1;

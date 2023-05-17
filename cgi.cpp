@@ -356,7 +356,7 @@ static int worker(int num_chld, RequestManager *ReqMan)
                 {
                     case CGI:
                     case PHPCGI:
-                        if (r->cgi->dir == FROM_CGI)
+                        if ((r->cgi->op.cgi == CGI_SEND_ENTITY) && (r->cgi->dir == FROM_CGI))
                         {
                             if (r->mode_send == CHUNK)
                             {
@@ -804,10 +804,7 @@ int cgi_stdin(Connect *req)// return [ ERR_TRY_AGAIN | -1 | 0 ]
         if (n == -1)
         {
             if (errno == EAGAIN)
-            {
-                req->io_status = POLL;
                 return ERR_TRY_AGAIN;
-            }
             print_err(req, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
             return -1;
         }
@@ -863,10 +860,7 @@ int cgi_stdout(Connect *req)// return [ ERR_TRY_AGAIN | -1 | 0 | 1 | 0< ]
         if (req->cgi->len_buf == -1)
         {
             if (errno == EAGAIN)
-            {
-                req->io_status = POLL;
                 return ERR_TRY_AGAIN;
-            }
             print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
             return -1;
         }
@@ -897,15 +891,11 @@ int cgi_stdout(Connect *req)// return [ ERR_TRY_AGAIN | -1 | 0 | 1 | 0< ]
     }
     else if (req->cgi->dir == TO_CLIENT)
     {
-        int ret = write(req->clientSocket, req->cgi->p, req->cgi->len_buf);
-        if (ret == -1)
+        int ret = write_to_client(req, req->cgi->p, req->cgi->len_buf);
+        if (ret < 0)
         {
-            print_err(req, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
-            if (errno == EAGAIN)
-            {
-                req->io_status = POLL;
+            if (ret == ERR_TRY_AGAIN)
                 return ERR_TRY_AGAIN;
-            }
             return -1;
         }
 
@@ -1016,10 +1006,7 @@ int cgi_read_http_headers(Connect *req)
     if (n == -1)
     {
         if (errno == EAGAIN)
-        {
-            req->io_status = POLL;
             return ERR_TRY_AGAIN;
-        }
         print_err(req, "<%s:%d> Error read(): %s\n", __func__, __LINE__, strerror(errno));
         return -1;
     }
@@ -1105,7 +1092,9 @@ static void cgi_worker(Connect* r)
         int ret = cgi_stdin(r);
         if (ret < 0)
         {
-            if (ret != ERR_TRY_AGAIN)
+            if (ret == ERR_TRY_AGAIN)
+                r->io_status = POLL;
+            else
             {
                 r->err = -RS502;
                 cgi_del_from_list(r);
@@ -1118,7 +1107,9 @@ static void cgi_worker(Connect* r)
         int ret = cgi_read_http_headers(r);
         if (ret < 0)
         {
-            if (ret != ERR_TRY_AGAIN)
+            if (ret == ERR_TRY_AGAIN)
+                r->io_status = POLL;
+            else
             {
                 r->err = -RS502;
                 cgi_del_from_list(r);
@@ -1142,18 +1133,19 @@ static void cgi_worker(Connect* r)
                 r->sock_timer = 0;
             }
         }
-        else // rd == 0
+        else
             r->sock_timer = 0;
     }
     else if (r->cgi->op.cgi == CGI_SEND_HTTP_HEADERS)
     {
         if (r->resp_headers.len > 0)
         {
-            int wr = write(r->clientSocket, r->resp_headers.p, r->resp_headers.len);
-            if (wr == -1)
+            int wr = write_to_client(r, r->resp_headers.p, r->resp_headers.len);
+            if (wr < 0)
             {
-                print_err(r, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
-                if (errno != EAGAIN)
+                if (wr == ERR_TRY_AGAIN)
+                    r->io_status = POLL;
+                else
                 {
                     r->err = -1;
                     r->req_hd.iReferer = MAX_HEADERS - 1;
@@ -1170,14 +1162,14 @@ static void cgi_worker(Connect* r)
                 r->resp_headers.len -= wr;
                 if (r->resp_headers.len == 0)
                 {
-                    if (r->reqMethod == M_HEAD)
+                    /*if (r->reqMethod == M_HEAD)
                     {
                         close(r->cgi->from_script);
                         r->cgi->from_script = -1;
                         cgi_del_from_list(r);
                         end_response(r);
                     }
-                    else
+                    else*/
                     {
                         r->cgi->op.cgi = CGI_SEND_ENTITY;
                         r->sock_timer = 0;
@@ -1225,7 +1217,9 @@ static void cgi_worker(Connect* r)
         int ret = cgi_stdout(r);
         if (ret < 0)
         {
-            if (ret != ERR_TRY_AGAIN)
+            if (ret == ERR_TRY_AGAIN)
+                r->io_status = POLL;
+            else
             {
                 r->err = -1;
                 cgi_del_from_list(r);

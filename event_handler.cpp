@@ -135,10 +135,8 @@ int send_part_file(Connect *req)
 //======================================================================
 static void del_from_list(Connect *r)
 {
-    if (r->source_entity == FROM_FILE)
+    if ((r->source_entity == FROM_FILE) || (r->source_entity == MULTIPART_ENTITY))
         close(r->fd);
-    else
-        get_time(r->sTime);
 
     if (r->prev && r->next)
     {
@@ -495,16 +493,7 @@ static void worker(Connect *r, RequestManager *ReqMan)
             if (r->mp.status == SEND_HEADERS)
             {
                 int wr = send_headers(r);
-                if (wr > 0)
-                {
-                    r->send_bytes += wr;
-                    if (r->resp_headers.len == 0)
-                    {
-                        r->mp.status = SEND_PART;
-                    }
-                    r->sock_timer = 0;
-                }
-                else if (wr < 0)
+                if (wr < 0)
                 {
                     if (wr == ERR_TRY_AGAIN)
                         r->io_status = POLL;
@@ -516,6 +505,15 @@ static void worker(Connect *r, RequestManager *ReqMan)
                         del_from_list(r);
                         end_response(r);
                     }
+                }
+                else if (wr > 0)
+                {
+                    r->send_bytes += wr;
+                    if (r->resp_headers.len == 0)
+                    {
+                        r->mp.status = SEND_PART;
+                    }
+                    r->sock_timer = 0;
                 }
             }
             else if (r->mp.status == SEND_PART)
@@ -554,18 +552,7 @@ static void worker(Connect *r, RequestManager *ReqMan)
             else if (r->mp.status == SEND_END)
             {
                 int wr = send_headers(r);
-                if (wr > 0)
-                {
-                    r->send_bytes += wr;
-                    if (r->resp_headers.len == 0)
-                    {
-                        del_from_list(r);
-                        end_response(r);
-                    }
-                    else
-                        r->sock_timer = 0;
-                }
-                else if (wr < 0)
+                if (wr < 0)
                 {
                     if (wr == ERR_TRY_AGAIN)
                         r->io_status = POLL;
@@ -578,6 +565,17 @@ static void worker(Connect *r, RequestManager *ReqMan)
                         end_response(r);
                     }
                 }
+                else if (wr > 0)
+                {
+                    r->send_bytes += wr;
+                    if (r->resp_headers.len == 0)
+                    {
+                        del_from_list(r);
+                        end_response(r);
+                    }
+                    else
+                        r->sock_timer = 0;
+                }
             }
         }
         else if (r->source_entity == FROM_DATA_BUFFER)
@@ -589,9 +587,7 @@ static void worker(Connect *r, RequestManager *ReqMan)
                 end_response(r);
             }
             else if (wr == ERR_TRY_AGAIN)
-            {
                 r->io_status = POLL;
-            }
             else if (wr < 0)
             {
                 r->err = -1;
@@ -600,6 +596,8 @@ static void worker(Connect *r, RequestManager *ReqMan)
                 del_from_list(r);
                 end_response(r);
             }
+            else
+                r->sock_timer = 0;
         }
     }
     else if (r->operation == SEND_RESP_HEADERS)
@@ -649,6 +647,8 @@ static void worker(Connect *r, RequestManager *ReqMan)
                     }
                 }
             }
+            else
+                r->sock_timer = 0;
         }
         else if (wr < 0)
         {
@@ -666,10 +666,10 @@ static void worker(Connect *r, RequestManager *ReqMan)
     }
     else if (r->operation == READ_REQUEST)
     {
-        int rd = hd_read(r);
-        if (rd < 0)
+        int ret = hd_read(r);
+        if (ret < 0)
         {
-            if (rd == ERR_TRY_AGAIN)
+            if (ret == ERR_TRY_AGAIN)
                 r->io_status = POLL;
             else
             {
@@ -678,12 +678,12 @@ static void worker(Connect *r, RequestManager *ReqMan)
                 end_response(r);
             }
         }
-        else if (rd > 0)
+        else if (ret > 0)
         {
             del_from_list(r);
             push_resp_list(r, ReqMan);
         }
-        else // rd == 0
+        else
             r->sock_timer = 0;
     }
     else

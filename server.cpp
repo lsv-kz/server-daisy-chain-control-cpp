@@ -151,8 +151,7 @@ void print_config()
          << "\n   MaxWorkConnections     : " << conf->MaxWorkConnections
 
          << "\n\n   NumProc                : " << conf->NumProc
-         << "\n   MaxThreads             : " << conf->MaxThreads
-         << "\n   MimThreads             : " << conf->MinThreads
+         << "\n   NumThreads             : " << conf->NumThreads
          << "\n   MaxCgiProc             : " << conf->MaxCgiProc
 
          << "\n\n   MaxRequestsPerClient   : " << conf->MaxRequestsPerClient

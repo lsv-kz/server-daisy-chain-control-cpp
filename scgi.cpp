@@ -221,6 +221,7 @@ int scgi_create_connect(Connect *req)
     req->cgi->op.scgi = SCGI_PARAMS;
     req->cgi->dir = TO_CGI;
     req->cgi->len_buf = 0;
+    req->timeout = conf->TimeoutCGI;
     req->sock_timer = 0;
     
     int ret = scgi_set_param(req);
@@ -421,12 +422,12 @@ void scgi_worker(Connect* r)
                     r->resp_headers.len -= wr;
                     if (r->resp_headers.len == 0)
                     {
-                        /*if (r->reqMethod == M_HEAD)
+                        if (r->reqMethod == M_HEAD)
                         {
                             cgi_del_from_list(r);
                             end_response(r);
                         }
-                        else*/
+                        else
                         {
                             r->cgi->op.scgi = SCGI_SEND_ENTITY;
                             r->sock_timer = 0;

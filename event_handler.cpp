@@ -7,18 +7,7 @@
 #endif
 
 using namespace std;
-
-//=============================================================================
-// push_pollin_list()  >------------|                                        //
-//                                  |                                        //
-// push_pollout_list() >------------|                                        //
-//                                  |                                        //
-//                                  V                                        //
-//                              [wait_list] -> [work_list] -> end_response() //
-//                                                                           //
-// [wait_list] - temporary storage                                           //
-// [work_list] - storage for working connections                             //
-//=============================================================================
+//======================================================================
 static Connect *work_list_start = NULL;
 static Connect *work_list_end = NULL;
 
@@ -39,7 +28,7 @@ int send_html(Connect *r);
 int create_multipart_head(Connect *req);
 void set_part(Connect *r);
 int send_headers(Connect *r);
-static void worker(Connect *r, RequestManager *ReqMan);
+static void worker(Connect *r);
 //======================================================================
 int send_part_file(Connect *req)
 {
@@ -220,7 +209,7 @@ static int set_poll()
     return num_poll;
 }
 //======================================================================
-static int worker(int num_chld, RequestManager *ReqMan)
+static int worker(int num_chld)
 {
     int ret = 0;
     if (num_poll > 0)
@@ -256,50 +245,44 @@ static int worker(int num_chld, RequestManager *ReqMan)
         if (r->io_status == WORK)
         {
             --all;
-            worker(r, ReqMan);
-            continue;
+            worker(r);
         }
-
-        if (poll_fd[i].revents == POLLOUT)
+        else
         {
-            --all;
-            r->io_status = WORK;
-            worker(r, ReqMan);
-        }
-        else if (poll_fd[i].revents & POLLIN)
-        {
-            --all;
-            r->io_status = WORK;
-            worker(r, ReqMan);
-        }
-        else if (poll_fd[i].revents)
-        {
-            --all;
-            print_err(r, "<%s:%d> Error: events=0x%x(0x%x)\n", __func__, __LINE__, poll_fd[i].events, poll_fd[i].revents);
-            del_from_list(r);
-            if (r->operation > READ_REQUEST)
+            if ((poll_fd[i].revents == POLLOUT) || (poll_fd[i].revents & POLLIN))
             {
-                r->req_hd.iReferer = MAX_HEADERS - 1;
-                r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+                --all;
+                r->io_status = WORK;
+                worker(r);
+            }
+            else if (poll_fd[i].revents)
+            {
+                --all;
+                print_err(r, "<%s:%d> Error: events=0x%x(0x%x)\n", __func__, __LINE__, poll_fd[i].events, poll_fd[i].revents);
+                del_from_list(r);
+                if (r->operation > READ_REQUEST)
+                {
+                    r->req_hd.iReferer = MAX_HEADERS - 1;
+                    r->reqHdValue[r->req_hd.iReferer] = "Connection reset by peer";
+                }
+
                 r->err = -1;
                 end_response(r);
             }
-            else
+            /*else if (poll_fd[i].revents == 0)
             {
-                r->err = -1;
-                end_response(r);
-            }
-        }
+                // --all; NO!!!!!
+            }*/
 
-        ++i;
+            ++i;
+        }
     }
 
     return i;
 }
 //======================================================================
-void event_handler(RequestManager *ReqMan)
+void event_handler(int num_chld)
 {
-    int num_chld = ReqMan->get_num_chld();
     size_buf = conf->SndBufSize;
     snd_buf = NULL;
 
@@ -337,7 +320,7 @@ void event_handler(RequestManager *ReqMan)
 
         add_work_list();
         set_poll();
-        if (worker(num_chld, ReqMan) < 0)
+        if (worker(num_chld) < 0)
             break;
     }
 
@@ -382,7 +365,7 @@ void push_send_file(Connect *r)
 void push_pollin_list(Connect *r)
 {
     r->event = POLLIN;
-    r->source_entity = ENTITY_NONE;
+    r->source_entity = NO_ENTITY;
     add_wait_list(r);
 }
 //======================================================================
@@ -461,7 +444,7 @@ int send_headers(Connect *r)
     return wr;
 }
 //======================================================================
-static void worker(Connect *r, RequestManager *ReqMan)
+static void worker(Connect *r)
 {
     if (r->operation == SEND_ENTITY)
     {
@@ -681,14 +664,14 @@ static void worker(Connect *r, RequestManager *ReqMan)
         else if (ret > 0)
         {
             del_from_list(r);
-            push_resp_list(r, ReqMan);
+            push_resp_list(r);
         }
         else
             r->sock_timer = 0;
     }
     else
     {
-        fprintf(stderr, "<%s:%d> ? operation=%s\n", __func__, __LINE__, get_str_operation(r->operation));
+        print_err(r, "<%s:%d> ? operation=%s\n", __func__, __LINE__, get_str_operation(r->operation));
         del_from_list(r);
         end_response(r);
     }

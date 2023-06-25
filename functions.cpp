@@ -274,8 +274,8 @@ const char *get_cgi_type(CGI_TYPE n)
 {
     switch (n)
     {
-        case CGI_TYPE_NONE:
-            return "CGI_TYPE_NONE";
+        case NO_CGI:
+            return "NO_CGI";
         case CGI:
             return "CGI";
         case PHPCGI:
@@ -829,7 +829,7 @@ int write_to_client(Connect *req, const char *buf, int len)
     int ret = send(req->clientSocket, buf, len, 0);
     if (ret == -1)
     {
-        print_err(req, "<%s:%d> Error write(): %s\n", __func__, __LINE__, strerror(errno));
+        print_err(req, "<%s:%d> Error send(): %s\n", __func__, __LINE__, strerror(errno));
         if (errno == EAGAIN)
             return ERR_TRY_AGAIN;
         else 

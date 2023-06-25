@@ -2,23 +2,17 @@
 
 using namespace std;
 //======================================================================
-void response1(RequestManager *ReqMan)
+void response1(int n_proc)
 {
     const char *p;
     Connect *req;
 
     while (1)
     {
-        req = ReqMan->pop_resp_list();
+        req = pop_resp_list();
         if (!req)
         {
-            ReqMan->end_thr(1);
-            return;
-        }
-        else if (req->clientSocket < 0)
-        {
-            ReqMan->end_thr(1);
-            delete req;
+            print_err("%d<%s:%d>  Error pop_resp_list()=NULL\n", n_proc, __func__, __LINE__);
             return;
         }
         //--------------------------------------------------------------
@@ -95,11 +89,7 @@ void response1(RequestManager *ReqMan)
             int ret = response2(req);
             if (ret == 1)
             {// "req" may be free !!!
-                ret = ReqMan->end_thr(0);
-                if (ret == EXIT_THR)
-                    return;
-                else
-                    continue;
+                continue;
             }
 
             req->err = ret;
@@ -109,9 +99,6 @@ void response1(RequestManager *ReqMan)
 
     end:
         end_response(req);
-
-        if (ReqMan->end_thr(0))
-            return;
     }
 }
 //======================================================================

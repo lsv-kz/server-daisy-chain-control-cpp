@@ -72,12 +72,12 @@ enum { HTTP09 = 1, HTTP10, HTTP11, HTTP2 };
 enum { EXIT_THR = 1 };
 
 enum MODE_SEND { NO_CHUNK, CHUNK, CHUNK_END };
-enum SOURCE_ENTITY { ENTITY_NONE, FROM_FILE, FROM_DATA_BUFFER, MULTIPART_ENTITY, };
+enum SOURCE_ENTITY { NO_ENTITY, FROM_FILE, FROM_DATA_BUFFER, MULTIPART_ENTITY, };
 enum OPERATION_TYPE { READ_REQUEST = 1, SEND_RESP_HEADERS, SEND_ENTITY, DYN_PAGE, };
 enum MULTIPART { SEND_HEADERS = 1, SEND_PART, SEND_END };
 enum IO_STATUS { POLL = 1, WORK };
 
-enum CGI_TYPE { CGI_TYPE_NONE, CGI, PHPCGI, PHPFPM, FASTCGI, SCGI, };
+enum CGI_TYPE { NO_CGI, CGI, PHPCGI, PHPFPM, FASTCGI, SCGI, };
 enum DIRECT { FROM_CGI = 1, TO_CGI, FROM_CLIENT, TO_CLIENT };
 
 enum FCGI_OPERATION { FASTCGI_CONNECT = 1, FASTCGI_BEGIN, FASTCGI_PARAMS, FASTCGI_STDIN, 
@@ -158,8 +158,7 @@ struct Config
 
     unsigned int NumProc;
     unsigned int MaxNumProc;
-    unsigned int MaxThreads;
-    unsigned int MinThreads;
+    unsigned int NumThreads;
     unsigned int MaxCgiProc;
 
     unsigned int MaxRanges;
@@ -339,43 +338,9 @@ public:
     void init();
 };
 //----------------------------------------------------------------------
-class RequestManager
-{
-private:
-    Connect *list_start;
-    Connect *list_end;
-
-    std::mutex mtx_thr;
-
-    std::condition_variable cond_list;
-    std::condition_variable cond_new_thr, cond_exit_thr;
-
-    unsigned int num_wait_thr, size_list, all_thr;
-    unsigned int count_thr, stop_manager;
-
-    unsigned int NumProc;
-
-    RequestManager() {}
-public:
-    RequestManager(const RequestManager&) = delete;
-    RequestManager(unsigned int);
-    ~RequestManager();
-    //-------------------------------
-    int get_num_chld(void);
-    int get_num_thr(void);
-    int get_all_thr(void);
-    int start_thr(void);
-    void wait_exit_thr(unsigned int n);
-    friend void push_resp_list(Connect *req, RequestManager *);
-    Connect *pop_resp_list();
-    int end_thr(int);
-    int wait_create_thr(int*);
-    void close_manager();
-};
-//----------------------------------------------------------------------
 extern char **environ;
 //----------------------------------------------------------------------
-void response1(RequestManager *ReqMan);
+void response1(int n_proc);
 int response2(Connect *req);
 int options(Connect *req);
 int index_dir(Connect *req, std::string& path);
@@ -386,9 +351,9 @@ int encode(const char *s_in, char *s_out, int len_out);
 int decode(const char *s_in, int len_in, char *s_out, int len);
 //----------------------------------------------------------------------
 int read_from_pipe(int fd, char *buf, int len, int timeout);
-int hd_read(Connect* req);
 int write_to_client(Connect *req, const char *buf, int len);
 int read_from_client(Connect *req, char *buf, int len);
+int hd_read(Connect* req);
 //----------------------------------------------------------------------
 int send_message(Connect *req, const char *msg);
 int create_response_headers(Connect *req);
@@ -431,10 +396,12 @@ void print_log(Connect *req);
 int timedwait_close_cgi();
 void cgi_dec();
 //----------------------------------------------------------------------
+void push_resp_list(Connect *req);
+Connect *pop_resp_list();
 void end_response(Connect *req);
 void close_connect(Connect *req);
 //----------------------------------------------------------------------
-void event_handler(RequestManager *ReqMan);
+void event_handler(int n_proc);
 void push_pollin_list(Connect *req);
 void push_send_file(Connect *req);
 void push_send_multipart(Connect *req);
@@ -443,7 +410,7 @@ void close_event_handler();
 //----------------------------------------------------------------------
 int set_max_fd(int max_open_fd);
 //----------------------------------------------------------------------
-void cgi_handler(RequestManager *ReqMan);
+void cgi_handler(int n_proc);
 void push_cgi(Connect *req);
 void close_cgi_handler(void);
 

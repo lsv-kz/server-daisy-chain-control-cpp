@@ -68,8 +68,7 @@ void create_conf_file(const char *path)
 
     fprintf(f, "NumProc  1\n");
     fprintf(f, "MaxNumProc  4\n");
-    fprintf(f, "MaxThreads  250\n");
-    fprintf(f, "MinThreads  6\n");
+    fprintf(f, "NumThreads  2\n");
     fprintf(f, "MaxCgiProc  15\n\n");
 
     fprintf(f, "MaxRequestsPerClient  100\n");
@@ -320,10 +319,8 @@ int read_conf_file(FILE *fconf)
                 s2 >> c.NumProc;
             else if ((s1 == "MaxNumProc") && is_number(s2.c_str()))
                 s2 >> c.MaxNumProc;
-            else if ((s1 == "MaxThreads") && is_number(s2.c_str()))
-                s2 >> c.MaxThreads;
-            else if ((s1 == "MinThreads") && is_number(s2.c_str()))
-                s2 >> c.MinThreads;
+            else if ((s1 == "NumThreads") && is_number(s2.c_str()))
+                s2 >> c.NumThreads;
             else if ((s1 == "MaxCgiProc") && is_number(s2.c_str()))
                 s2 >> c.MaxCgiProc;
             else if ((s1 == "MaxRequestsPerClient") && is_number(s2.c_str()))
@@ -481,15 +478,6 @@ int read_conf_file(FILE *fconf)
     {
         print_err("<%s:%d> Error: SndBufSize=%d\n", __func__, __LINE__, conf->SndBufSize);
         exit(1);
-    }
-    //------------------------------------------------------------------
-    if (c.MinThreads < 1)
-        c.MinThreads = 1;
-
-    if (c.MinThreads > c.MaxThreads)
-    {
-        fprintf(stderr, "<%s:%d> Error: NumThreads > MaxThreads\n", __func__, __LINE__);
-        return -1;
     }
     //------------------------------------------------------------------
     //c.NumCpuCores = thread::hardware_concurrency();

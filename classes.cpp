@@ -24,8 +24,11 @@ void Connect::init()
     respStatus = 0;
     mode_send = NO_CHUNK;
 
-    cgi_type = CGI_TYPE_NONE;
+    cgi = NULL;
+    cgi_type = NO_CGI;
     scriptName = NULL;
+
+    fcgi.fd = -1;
 
     hdrs = "";
     numPart = 0;

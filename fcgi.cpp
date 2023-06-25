@@ -988,13 +988,12 @@ void fcgi_worker(Connect* r)
                     r->resp_headers.len -= wr;
                     if (r->resp_headers.len == 0)
                     {
-                        /*if (r->reqMethod == M_HEAD)
+                        if (r->reqMethod == M_HEAD)
                         {
                             cgi_del_from_list(r);
                             end_response(r);
-                            return 0;
                         }
-                        else*/
+                        else
                         {
                             r->cgi->op.fcgi = FASTCGI_SEND_ENTITY;
                             r->sock_timer = 0;

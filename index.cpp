@@ -61,15 +61,13 @@ int cmp(const void *a, const void *b)
     return i;
 }
 //======================================================================
-int create_index_html(Connect *r, char **list, int numFiles, string& path)
+void create_index_html(Connect *r, char **list, int numFiles, string& path)
 {
     const int len_path = path.size();
     int n, i;
     long long size;
     struct stat st;
 
-    if (r->reqMethod == M_HEAD)
-        return 0;
     r->html.s = "";
     //------------------------------------------------------------------
     r->html.s << "<!DOCTYPE HTML>\r\n"
@@ -164,8 +162,6 @@ int create_index_html(Connect *r, char **list, int numFiles, string& path)
     //------------------------------------------------------------------
     r->respContentLength = r->html.s.size();
     r->respContentType = "text/html";
-
-    return r->respContentLength;
 }
 //======================================================================
 int index_dir(Connect *r, string& path)
@@ -174,7 +170,6 @@ int index_dir(Connect *r, string& path)
     struct dirent *dirbuf;
     int maxNumFiles = 1024, numFiles = 0;
     char *list[maxNumFiles];
-    int ret;
 
     path += '/';
 
@@ -205,27 +200,31 @@ int index_dir(Connect *r, string& path)
     }
 
     qsort(list, numFiles, sizeof(char *), cmp);
-    ret = create_index_html(r, list, numFiles, path);
+    create_index_html(r, list, numFiles, path);
     closedir(dir);
-    if (ret >= 0)
+
+    r->html.p = r->html.s.c_str();
+    r->html.len = r->html.s.size();
+
+    r->respStatus = RS200;
+    r->mode_send = NO_CHUNK;
+    if (create_response_headers(r))
     {
-        r->html.p = r->html.s.c_str();
-        r->html.len = r->html.s.size();
-
-        r->respStatus = RS200;
-        r->mode_send = NO_CHUNK;
-        if (create_response_headers(r))
-        {
-            print_err(r, "<%s:%d> Error create_response_headers()\n", __func__, __LINE__);
-            r->err = -1;
-            return -1;
-        }
-
-        r->resp_headers.p = r->resp_headers.s.c_str();
-        r->resp_headers.len = r->resp_headers.s.size();
-        push_send_html(r);
-        return 1;
+        print_err(r, "<%s:%d> Error create_response_headers()\n", __func__, __LINE__);
+        return -1;
     }
 
-    return ret;
+    if (r->reqMethod == M_HEAD)
+    {
+        r->resp_headers.p = "";
+        r->resp_headers.len = 0;
+    }
+    else
+    {
+        r->resp_headers.p = r->resp_headers.s.c_str();
+        r->resp_headers.len = r->resp_headers.s.size();
+    }
+
+    push_send_html(r);
+    return 1;
 }

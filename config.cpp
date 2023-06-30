@@ -480,6 +480,12 @@ int read_conf_file(FILE *fconf)
         exit(1);
     }
     //------------------------------------------------------------------
+    if ((c.NumThreads > 6) || (c.NumThreads < 1))
+    {
+        fprintf(stderr, "<%s:%d> Error: NumThreads=%d\n", __func__, __LINE__, c.NumThreads);
+        return -1;
+    }
+    //------------------------------------------------------------------
     //c.NumCpuCores = thread::hardware_concurrency();
     if (c.NumCpuCores == 0)
         c.NumCpuCores = 1;

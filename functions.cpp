@@ -824,38 +824,6 @@ int parse_headers(Connect *req, char *pName, int i)
     return 0;
 }
 //======================================================================
-int write_to_client(Connect *req, const char *buf, int len)
-{
-    int ret = send(req->clientSocket, buf, len, 0);
-    if (ret == -1)
-    {
-        print_err(req, "<%s:%d> Error send(): %s\n", __func__, __LINE__, strerror(errno));
-        if (errno == EAGAIN)
-            return ERR_TRY_AGAIN;
-        else 
-            return -1;
-    }
-    else
-        return  ret;
-}
-//======================================================================
-int read_from_client(Connect *req, char *buf, int len)
-{
-    int ret = recv(req->clientSocket, buf, len, 0);
-    if (ret == -1)
-    {
-        if (errno == EAGAIN)
-            return ERR_TRY_AGAIN;
-        else
-        {
-            print_err(req, "<%s:%d> Error recv(): %s\n", __func__, __LINE__, strerror(errno));
-            return -1;
-        }
-    }
-    else
-        return  ret;
-}
-//======================================================================
 int find_empty_line(Connect *req)
 {
     req->timeout = conf->Timeout;
@@ -939,34 +907,6 @@ int find_empty_line(Connect *req)
         else
             break;
     }
-
-    return 0;
-}
-//======================================================================
-int hd_read(Connect *req)
-{
-    int num_read = SIZE_BUF_REQUEST - req->req.len - 1;
-    if (num_read <= 0)
-        return -RS414;
-    int n = read_from_client(req, req->req.buf + req->req.len, num_read);
-    if (n < 0)
-    {
-        if (n == ERR_TRY_AGAIN)
-            return ERR_TRY_AGAIN;
-        return -1;
-    }
-    else if (n == 0)
-        return -1;
-
-    req->lenTail += n;
-    req->req.len += n;
-    req->req.buf[req->req.len] = 0;
-
-    n = find_empty_line(req);
-    if (n == 1) // empty line found
-        return req->req.len;
-    else if (n < 0) // error
-        return -1;
 
     return 0;
 }

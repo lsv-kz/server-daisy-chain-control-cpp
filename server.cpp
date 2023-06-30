@@ -9,10 +9,11 @@ int read_conf_file(const char *path_conf);
 int create_server_socket(const Config *c);
 int get_size_sock_buf(int domain, int optname, int type, int protocol);
 void free_fcgi_list();
-
-pid_t create_child(int, unsigned int, int *, int, char);
-static int main_proc();
 int set_uid();
+
+static pid_t create_child(int, unsigned int, int *, int, char);
+static int main_proc();
+static int read_from_pipe(int fd, char *buf, int len, int timeout);
 
 static string pidFile;
 static string confPath;
@@ -551,7 +552,7 @@ int read_from_pipe(int fd, char *buf, int len, int timeout)
             return ret;
         }
         else if (!ret)
-            return -RS408;
+            return 0;
 
         if (fdrd.revents & POLLIN)
         {

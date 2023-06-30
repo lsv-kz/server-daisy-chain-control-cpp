@@ -649,7 +649,7 @@ static void worker(Connect *r)
     }
     else if (r->operation == READ_REQUEST)
     {
-        int ret = hd_read(r);
+        int ret = read_request_headers(r);
         if (ret < 0)
         {
             if (ret == ERR_TRY_AGAIN)

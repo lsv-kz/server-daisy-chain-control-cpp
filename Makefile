@@ -16,7 +16,7 @@ OBJS = $(OBJSDIR)/server.o \
 	$(OBJSDIR)/threads_manager.o \
 	$(OBJSDIR)/response.o \
 	$(OBJSDIR)/event_handler.o \
-	$(OBJSDIR)/create_socket.o \
+	$(OBJSDIR)/socket.o \
 	$(OBJSDIR)/percent_coding.o \
 	$(OBJSDIR)/functions.o \
 	$(OBJSDIR)/log.o \
@@ -55,8 +55,8 @@ $(OBJSDIR)/response.o: response.cpp main.h ranges.h string__.h
 $(OBJSDIR)/event_handler.o: event_handler.cpp main.h ranges.h string__.h
 	$(CC) $(CFLAGS) -c event_handler.cpp -o $@
 
-$(OBJSDIR)/create_socket.o: create_socket.cpp main.h string__.h
-	$(CC) $(CFLAGS) -c create_socket.cpp -o $@
+$(OBJSDIR)/socket.o: socket.cpp main.h string__.h
+	$(CC) $(CFLAGS) -c socket.cpp -o $@
 
 $(OBJSDIR)/percent_coding.o: percent_coding.cpp main.h
 	$(CC) $(CFLAGS) -c percent_coding.cpp -o $@

@@ -26,7 +26,7 @@ void Connect::init()
 
     cgi = NULL;
     cgi_type = NO_CGI;
-    scriptName = NULL;
+    scriptName = "";
 
     fcgi.fd = -1;
 
@@ -211,7 +211,7 @@ void Ranges::parse_ranges(char *sRange)
             }
             else
             {
-                err =  RS416;
+                err = RS416;
                 return;
             }
         }

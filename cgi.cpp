@@ -204,7 +204,7 @@ mtx_.lock();
 mtx_.unlock();
 }
 //======================================================================
-static void set_poll_list(Connect *r, time_t t)
+static void cgi_set_poll_list(Connect *r, time_t t)
 {
     if (r->sock_timer == 0)
         r->sock_timer = t;
@@ -275,7 +275,7 @@ static void worker(Connect *r)
     }
 }
 //======================================================================
-static void set_poll_list()
+static void cgi_set_poll_list()
 {
     time_t t = time(NULL);
     n_work = n_poll = 0;
@@ -284,7 +284,7 @@ static void set_poll_list()
     for ( ; r; r = next)
     {
         next = r->next;
-        set_poll_list(r, t);
+        cgi_set_poll_list(r, t);
     }
 }
 //======================================================================
@@ -468,7 +468,7 @@ void cgi_handler(int num_chld)
         }
 
         cgi_add_work_list();
-        set_poll_list();
+        cgi_set_poll_list();
         if (worker(num_chld) < 0)
             break;
     }

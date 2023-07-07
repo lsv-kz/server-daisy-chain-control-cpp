@@ -612,38 +612,55 @@ end:
 //======================================================================
 int clean_path(char *path)
 {
-    int i = 0, o = 0;
+    unsigned int num_subfolder = 0;
+    const unsigned int max_subfolder = 20;
+    int arr[max_subfolder];
+    int i = 0, j = 0;
     char ch;
 
-    while ((ch = *(path + o)))
+    while ((ch = *(path + j)))
     {
-        if (!memcmp(path+o, "/../", 4))
+        if (!memcmp(path + j, "/../", 4))
         {
-            if (i != 0)
-            {
-                for (--i; i > 0; --i)
-                {
-                    if (*(path + i) == '/')
-                        break;
-                }
-            }
-            o += 3;
+            if (num_subfolder)
+                i = arr[--num_subfolder];
+            else
+                return -1;
+            j += 3;
         }
-        else if (!memcmp(path+o, "//", 2))
-            o += 1;
-        else if (!memcmp(path+o, "/./", 3))
-            o += 2;
+        else if (!memcmp(path + j, "//", 2))
+            j += 1;
+        else if (!memcmp(path + j, "/./", 3))
+            j += 2;
+        else if (!memcmp(path + j, ".\0", 2))
+            break;
+        else if (!memcmp(path + j, "/..\0", 4))
+        {
+            if (num_subfolder)
+            {
+                i = arr[--num_subfolder];
+                i++;
+                break;
+            }
+            else
+                return -1;
+        }
         else
         {
-            if (!memcmp(path+o, "/.", 2))
-                return -RS404;
-            if (o != i)
-                *(path + i) = ch;
+            if (ch == '/')
+            {
+                if (num_subfolder < max_subfolder)
+                    arr[num_subfolder++] = i;
+                else
+                    return -1;
+            }
+            
+            *(path + i) = ch;
             ++i;
-            ++o;
+            ++j;
         }
     }
-
+    
     *(path + i) = 0;
 
     return i;

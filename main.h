@@ -152,9 +152,9 @@ struct Config
     char SendFile;
     int SndBufSize;
 
-    unsigned int NumCpuCores;
-
     int MaxWorkConnections;
+
+    char BalancedLoad;
 
     unsigned int NumProc;
     unsigned int MaxNumProc;

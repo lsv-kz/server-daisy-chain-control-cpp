@@ -177,37 +177,37 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
     //------------------------------------------------------------------
     if (signal(SIGINT, signal_handler_child) == SIG_ERR)
     {
-        print_err("[%d] <%s:%d> Error signal(SIGINT): %s\n", numProc, __func__, __LINE__, strerror(errno));
+        print_err("[%d]<%s:%d> Error signal(SIGINT): %s\n", numProc, __func__, __LINE__, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     if (signal(SIGSEGV, signal_handler_child) == SIG_ERR)
     {
-        print_err("[%d] <%s:%d> Error signal(SIGSEGV): %s\n", numProc, __func__, __LINE__, strerror(errno));
+        print_err("[%d]<%s:%d> Error signal(SIGSEGV): %s\n", numProc, __func__, __LINE__, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     if (signal(SIGTERM, signal_handler_child) == SIG_ERR)
     {
-        fprintf(stderr, "<%s:%d> Error signal(SIGTERM): %s\n", __func__, __LINE__, strerror(errno));
+        print_err("[%d]<%s:%d> Error signal(SIGTERM): %s\n", numProc, __func__, __LINE__, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     if (signal(SIGUSR1, signal_handler_child) == SIG_ERR)
     {
-        print_err("[%d] <%s:%d> Error signal(SIGUSR1): %s\n", numProc, __func__, __LINE__, strerror(errno));
+        print_err("[%d]<%s:%d> Error signal(SIGUSR1): %s\n", numProc, __func__, __LINE__, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     if (signal(SIGUSR2, signal_handler_child) == SIG_ERR)
     {
-        print_err("[%d] <%s:%d> Error signal(SIGUSR2): %s\n", numProc, __func__, __LINE__, strerror(errno));
+        print_err("[%d]<%s:%d> Error signal(SIGUSR2): %s\n", numProc, __func__, __LINE__, strerror(errno));
         exit(EXIT_FAILURE);
     }
     //------------------------------------------------------------------
     if (chdir(conf->DocumentRoot.c_str()))
     {
-        print_err("[%d] <%s:%d> Error chdir(%s): %s\n", numProc, __func__, __LINE__, conf->DocumentRoot.c_str(), strerror(errno));
+        print_err("[%d]<%s:%d> Error chdir(%s): %s\n", numProc, __func__, __LINE__, conf->DocumentRoot.c_str(), strerror(errno));
         exit(EXIT_FAILURE);
     }
     //------------------------------------------------------------------
@@ -218,7 +218,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
     }
     catch (...)
     {
-        print_err("[%d] <%s:%d> Error create thread(cgi_handler): errno=%d\n", numProc, __func__, __LINE__, errno);
+        print_err("[%d]<%s:%d> Error create thread(cgi_handler): errno=%d\n", numProc, __func__, __LINE__, errno);
         exit(errno);
     }
     //------------------------------------------------------------------
@@ -229,7 +229,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
     }
     catch (...)
     {
-        print_err("[%d] <%s:%d> Error create thread(event_handler): errno=%d\n", numProc, __func__, __LINE__, errno);
+        print_err("[%d]<%s:%d> Error create thread(event_handler): errno=%d\n", numProc, __func__, __LINE__, errno);
         exit(errno);
     }
     //------------------------------------------------------------------
@@ -243,7 +243,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
         }
         catch (...)
         {
-            print_err("[%d] <%s:%d> Error create thread: errno=%d\n", numProc, __func__, __LINE__, errno);
+            print_err("[%d]<%s:%d> Error create thread: errno=%d\n", numProc, __func__, __LINE__, errno);
             exit(errno);
         }
 
@@ -295,7 +295,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
         {
             if (errno == EINTR)
                 continue;
-            print_err("[%d] <%s:%d> Error poll()=-1: %s\n", numProc, __func__, __LINE__, strerror(errno));
+            print_err("[%d]<%s:%d> Error poll()=-1: %s\n", numProc, __func__, __LINE__, strerror(errno));
             break;
         }
 
@@ -305,7 +305,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             unsigned char ch;
             if (read_(fd_in, &ch, sizeof(ch)) <= 0)
             {
-                print_err("[%d] <%s:%d> Error read(): %s\n", numProc, __func__, __LINE__, strerror(errno));
+                print_err("[%d]<%s:%d> Error read(): %s\n", numProc, __func__, __LINE__, strerror(errno));
                 break;
             }
 
@@ -330,7 +330,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
                 if ((errno == EAGAIN) || (errno == EINTR) || (errno == EMFILE))
                     continue;
                 break;
-                print_err("[%d] <%s:%d>  Error accept(): %s\n", numProc, __func__, __LINE__, strerror(errno));
+                print_err("[%d]<%s:%d>  Error accept(): %s\n", numProc, __func__, __LINE__, strerror(errno));
             }
 
             Connect *req;
@@ -346,7 +346,6 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             ioctl(clientSocket, FIONBIO, &opt);
 
             req->init();
-            get_time(req->sTime);
             req->numProc = numProc;
             req->numConn = ++allConn;
             req->numReq = 1;
@@ -373,12 +372,12 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
 
         if (ret_poll)
         {
-            print_err("[%d] <%s:%d>  Error: pipe revents=0x%x; socket revents=0x%x\n",
+            print_err("[%d]<%s:%d>  Error: pipe revents=0x%x; socket revents=0x%x\n",
                         numProc, __func__, __LINE__, fdrd[0].revents, fdrd[1].revents);
             break;
         }
 
-        if (conf->NumCpuCores >= 4)
+        if (conf->BalancedLoad == 'y')
         {
             status = CONNECT_IGN;
             char ch = CONNECT_ALLOW;
@@ -391,7 +390,7 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
 
     close(sockServer);
 
-    print_err("[%d] <%s:%d> all_req=%u; open_conn=%d, status=%u\n", numProc,
+    print_err("[%d]<%s:%d> all_req=%u; open_conn=%d, status=%u\n", numProc,
                     __func__, __LINE__, all_req, num_conn, (unsigned int)status);
 
     close_resp_thread();

@@ -138,15 +138,10 @@ class String
 public:
     String(){}
     explicit String(unsigned int n) { buf.reserve(n); }
-    /*String(const String& s)
-    {
-        buf = s.buf;
-    }*/
-
-    String(const std::string& s) { buf = s; }
-
+    String(const String&) = delete;
     String& operator >> (double&) = delete;
     String& operator >> (char*) = delete;
+    String(const std::string& s) { buf = s; }
     //------------------------------------------------------------------
     String& operator << (BaseHex b)
     {

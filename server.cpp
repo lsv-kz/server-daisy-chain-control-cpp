@@ -123,13 +123,13 @@ void print_limits()
 
     int sndbuf = get_size_sock_buf(AF_INET, SO_SNDBUF, SOCK_STREAM, 0);
     if (sndbuf < 0)
-        cerr << " Error get_sock_buf(AF_INET, SO_SNDBUF, SOCK_STREAM, 0): " << strerror(-sndbuf) << "\n";
+        cerr << " Error get_size_sock_buf(AF_INET, SO_SNDBUF, SOCK_STREAM, 0): " << strerror(-sndbuf) << "\n";
     else
         cout << " AF_INET: SO_SNDBUF=" << sndbuf << "\n";
 
     sndbuf = get_size_sock_buf(AF_INET, SO_RCVBUF, SOCK_STREAM, 0);
     if (sndbuf < 0)
-        cerr << " Error get_sock_buf(AF_INET, SO_RCVBUF, SOCK_STREAM, 0): " << strerror(-sndbuf) << "\n\n";
+        cerr << " Error get_size_sock_buf(AF_INET, SO_RCVBUF, SOCK_STREAM, 0): " << strerror(-sndbuf) << "\n\n";
     else
         cout << " AF_INET: SO_RCVBUF=" << sndbuf << "\n\n";
 }
@@ -144,29 +144,22 @@ void print_config()
          << "\n\n   ListenBacklog          : " << conf->ListenBacklog
          << "\n   TcpCork                : " << conf->TcpCork
          << "\n   TcpNoDelay             : " << conf->TcpNoDelay
-
          << "\n\n   SendFile               : " << conf->SendFile
          << "\n   SndBufSize             : " << conf->SndBufSize
-
-         << "\n\n   NumCpuCores            : " << conf->NumCpuCores
+         << "\n\n   NumCpuCores            : " << thread::hardware_concurrency()
+         << "\n   BalancedLoad           : " << conf->BalancedLoad
          << "\n   MaxWorkConnections     : " << conf->MaxWorkConnections
-
          << "\n\n   NumProc                : " << conf->NumProc
          << "\n   NumThreads             : " << conf->NumThreads
          << "\n   MaxCgiProc             : " << conf->MaxCgiProc
-
          << "\n\n   MaxRequestsPerClient   : " << conf->MaxRequestsPerClient
          << "\n   TimeoutKeepAlive       : " << conf->TimeoutKeepAlive
          << "\n   Timeout                : " << conf->Timeout
          << "\n   TimeoutCGI             : " << conf->TimeoutCGI
          << "\n   TimeoutPoll            : " << conf->TimeoutPoll
-
          << "\n\n   MaxRanges              : " << conf->MaxRanges
-
          << "\n\n   ClientMaxBodySize      : " << conf->ClientMaxBodySize
-
          << "\n\n   ShowMediaFiles         : " << conf->ShowMediaFiles
-
          << "\n\n   index_html             : " << conf->index_html
          << "\n   index_php              : " << conf->index_php
          << "\n   index_pl               : " << conf->index_pl
@@ -353,11 +346,12 @@ int main_proc()
     pid_t pid = getpid();
     //------------------------------------------------------------------
     cout << "\n[" << get_time().c_str() << "] - server \"" << conf->ServerSoftware.c_str()
-         << "\" run, port: " << conf->ServerPort.c_str() << "\n";
+         << "\" run, port: " << conf->ServerPort.c_str()
+         << "\n   hardware_concurrency = " << thread::hardware_concurrency() << "\n";
     cerr << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
     cout << "   pid="  << pid << "; uid=" << getuid() << "; gid=" << getgid() << "\n";
-    cerr << "   MaxWorkConnections: " << conf->MaxWorkConnections << ", NumCpuCores: " << conf->NumCpuCores << "\n";
-    cerr << "   SndBufSize: " << conf->SndBufSize << "\n";
+    cerr << "   NumCpuCores: " << thread::hardware_concurrency() << "\n   BalancedLoad: " << conf->BalancedLoad
+         << "\n   MaxWorkConnections: " << conf->MaxWorkConnections << "\n   SndBufSize: " << conf->SndBufSize << "\n";
     //------------------------------------------------------------------
     for ( ; environ[0]; )
     {
@@ -533,18 +527,16 @@ pid_t create_child(int sock, unsigned int num_chld, int *pfd_i, int fd_close, ch
 //======================================================================
 int read_from_pipe(int fd, char *buf, int len, int timeout)
 {
-    int read_bytes = 0, ret, tm;
+    int read_bytes = 0, ret;
     struct pollfd fdrd;
     char *p = buf;
-    
-    tm = (timeout == -1) ? -1 : (timeout * 1000);
 
     fdrd.fd = fd;
     fdrd.events = POLLIN;
 
     while (len > 0)
     {
-        ret = poll(&fdrd, 1, tm);
+        ret = poll(&fdrd, 1, timeout * 1000);
         if (ret == -1)
         {
             if (errno == EINTR)

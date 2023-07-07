@@ -74,11 +74,7 @@ int create_fcgi_socket(const char *host)
     char port[16];
 
     if (!host)
-    {
-        print_err("<%s:%d> Error: host=NULL\n", __func__, __LINE__);
         return -1;
-    }
-
     n = sscanf(host, "%[^:]:%s", addr, port);
     if (n == 2) //==== AF_INET ====
     {

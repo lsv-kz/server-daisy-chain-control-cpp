@@ -2,7 +2,7 @@
 
 using namespace std;
 //======================================================================
-void response1(int n_proc)
+void response1(int num_proc)
 {
     const char *p;
     Connect *req;
@@ -12,10 +12,11 @@ void response1(int n_proc)
         req = pop_resp_list();
         if (!req)
         {
-            print_err("%d<%s:%d>  Error pop_resp_list()=NULL\n", n_proc, __func__, __LINE__);
+            print_err("%d<%s:%d>  Error pop_resp_list()=NULL\n", num_proc, __func__, __LINE__);
             return;
         }
         //--------------------------------------------------------------
+        get_time(req->sTime);
         for (int i = 1; i < req->countReqHeaders; ++i)
         {
             int ret = parse_headers(req, req->reqHdName[i], i);
@@ -423,7 +424,6 @@ int send_multypart(Connect *req)
         return -1;
 
     push_send_multipart(req);
-
     return 1;
 }
 //======================================================================

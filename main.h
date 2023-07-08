@@ -390,9 +390,6 @@ void close_logs(void);
 void print_err(Connect *req, const char *format, ...);
 void print_log(Connect *req);
 //----------------------------------------------------------------------
-int timedwait_close_cgi();
-void cgi_dec();
-//----------------------------------------------------------------------
 void push_resp_list(Connect *req);
 Connect *pop_resp_list();
 void end_response(Connect *req);

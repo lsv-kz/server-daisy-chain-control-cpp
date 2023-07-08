@@ -74,7 +74,7 @@ void create_index_html(Connect *r, char **list, int numFiles, string& path)
             "<html>\r\n"
             " <head>\r\n"
             "  <meta charset=\"UTF-8\">\r\n"
-            "  <title>Index of " << r->decodeUri << " (ch)</title>\r\n"
+            "  <title>Index of " << r->decodeUri << "</title>\r\n"
             "  <style>\r\n"
             "    body {\r\n"
             "     margin-left:100px; margin-right:50px;\r\n"

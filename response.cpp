@@ -65,7 +65,13 @@ void response1(int num_proc)
             goto end;
         }
 
-        clean_path(req->decodeUri);
+        if (clean_path(req->decodeUri) <= 0)
+        {
+            print_err(req, "<%s:%d> Error URI=%s\n", __func__, __LINE__, req->decodeUri);
+            req->lenDecodeUri = strlen(req->decodeUri);
+            req->err = -RS400;
+            goto end;
+        }
         req->lenDecodeUri = strlen(req->decodeUri);
 
         if (strstr(req->uri, ".php") && (conf->UsePHP != "php-cgi") && (conf->UsePHP != "php-fpm"))
@@ -204,10 +210,12 @@ int response2(Connect *req)
     path.reserve(1 + req->lenDecodeUri + 16);
     path += '.';
     path += req->decodeUri;
-    if (path[path.size()-1] == '/')
-        path.resize(path.size() - 1);
-
-    if (lstat(path.c_str(), &st) == -1)
+    int ret;
+    if (path[path.size() - 1] == '/')
+        ret = lstat(path.substr(0, path.size() - 1).c_str(), &st);
+    else
+        ret = lstat(path.c_str(), &st);
+    if (ret == -1)
     {
         if (errno == EACCES)
             return -RS403;
@@ -232,7 +240,7 @@ int response2(Connect *req)
             return options(req);
         }
 
-        if (req->uri[req->uriLen - 1] != '/')
+        if (req->decodeUri[req->lenDecodeUri - 1] != '/')
         {
             req->uri[req->uriLen] = '/';
             req->uri[req->uriLen + 1] = '\0';
@@ -334,7 +342,7 @@ int response2(Connect *req)
     }
     path.reserve(0);
 
-    int ret = send_file(req);
+    ret = send_file(req);
     if (ret != 1)
         close(req->fd);
 

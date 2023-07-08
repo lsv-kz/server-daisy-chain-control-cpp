@@ -626,6 +626,7 @@ static void worker(Connect *r)
     else
     {
         print_err(r, "<%s:%d> ? operation=%s\n", __func__, __LINE__, get_str_operation(r->operation));
+        r->err = -1;
         del_from_list(r);
         end_response(r);
     }

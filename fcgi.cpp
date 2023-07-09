@@ -140,7 +140,7 @@ int fcgi_create_connect(Connect *req)
     }
 
     if (req->cgi_type == PHPFPM)
-        req->fcgi.fd = create_fcgi_socket(conf->PathPHP.c_str());
+        req->fcgi.fd = create_fcgi_socket(req, conf->PathPHP.c_str());
     else if (req->cgi_type == FASTCGI)
         req->fcgi.fd = get_sock_fcgi(req, req->scriptName.c_str());
     else

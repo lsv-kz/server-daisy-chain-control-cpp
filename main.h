@@ -345,7 +345,7 @@ int response2(Connect *req);
 int options(Connect *req);
 int index_dir(Connect *req, std::string& path);
 //----------------------------------------------------------------------
-int create_fcgi_socket(const char *host);
+int create_fcgi_socket(Connect *r, const char *host);
 int write_to_client(Connect *req, const char *buf, int len);
 int read_from_client(Connect *req, char *buf, int len);
 int read_request_headers(Connect* req);

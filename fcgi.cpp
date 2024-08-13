@@ -102,16 +102,8 @@ void fcgi_set_param(Connect *r)
         r->cgi->len_buf += len;
     }
 
-    if (r->cgi->len_buf > 0)
-    {
-        r->fcgi.dataLen = r->cgi->len_buf;
-        fcgi_set_header(r, FCGI_PARAMS);
-    }
-    else
-    {
-        r->fcgi.dataLen = r->cgi->len_buf;
-        fcgi_set_header(r, FCGI_PARAMS);
-    }
+    r->fcgi.dataLen = r->cgi->len_buf;
+    fcgi_set_header(r, FCGI_PARAMS);
 }
 //======================================================================
 int fcgi_create_connect(Connect *req)

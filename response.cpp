@@ -19,10 +19,10 @@ void response1(int num_proc)
         get_time(req->sTime);
         for (int i = 1; i < req->countReqHeaders; ++i)
         {
-            int ret = parse_headers(req, req->reqHdName[i], i);
-            if (ret < 0)
+            req->err = parse_headers(req, req->reqHdName[i], i);
+            if (req->err < 0)
             {
-                print_err(req, "<%s:%d>  Error parse_headers(): %d\n", __func__, __LINE__, ret);
+                print_err(req, "<%s:%d>  Error parse_headers(): %d\n", __func__, __LINE__, req->err);
                 goto end;
             }
         }
@@ -102,7 +102,7 @@ void response1(int num_proc)
             req->err = ret;
         }
         else
-            req->err = -RS405;
+            req->err = -RS501;
 
     end:
         end_response(req);

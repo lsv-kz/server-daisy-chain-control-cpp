@@ -353,15 +353,16 @@ void manager(int sockServer, unsigned int numProc, int fd_in, int fd_out, char s
             req->clientSocket = clientSocket;
             req->timeout = conf->Timeout;
 
-            if (getnameinfo((struct sockaddr *)&clientAddr,
+            int err;
+            if ((err = getnameinfo((struct sockaddr *)&clientAddr,
                     addrSize,
                     req->remoteAddr,
                     sizeof(req->remoteAddr),
                     req->remotePort,
                     sizeof(req->remotePort),
-                    NI_NUMERICHOST | NI_NUMERICSERV))
+                    NI_NUMERICHOST | NI_NUMERICSERV)))
             {
-                print_err(req, "<%s:%d> Error getnameinfo()=%d: %s\n", __func__, __LINE__, n, gai_strerror(n));
+                print_err(req, "<%s:%d> Error getnameinfo()=%d: %s\n", __func__, __LINE__, err, gai_strerror(err));
                 req->remoteAddr[0] = 0;
             }
 

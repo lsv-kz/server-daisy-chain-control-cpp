@@ -532,7 +532,7 @@ int read_conf_file(const char *path_conf)
             char s[8];
             printf("Create config file? [y/n]: ");
             fflush(stdout);
-            fgets(s, sizeof(s), stdout);
+            fgets(s, sizeof(s), stdin);
             if (s[0] == 'y')
             {
                 create_conf_file(path_conf);

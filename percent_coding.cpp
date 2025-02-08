@@ -8,7 +8,7 @@ int encode(const char *s_in, char *s_out, int len_out)
     unsigned char c,d;
     int cnt_o = 0;
     char *p = s_out;
-    char Az09[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    char not_encode[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "abcdefghijklmnopqrstuvwxyz" "0123456789" "/:-_.!~*'()";
 
     if ((!s_in) || (!s_out))
@@ -18,7 +18,7 @@ int encode(const char *s_in, char *s_out, int len_out)
     {
         if (c <= 0x7f)
         {
-            if (!strchr(Az09, c))
+            if (!strchr(not_encode, c))
             {
                 if ((cnt_o + 3) < len_out)
                 {
